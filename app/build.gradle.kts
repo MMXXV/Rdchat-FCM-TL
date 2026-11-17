@@ -6,6 +6,7 @@ plugins {
 android {
     namespace = "com.example.rdchat"
     compileSdk = 37
+    buildToolsVersion = "37.0.0"
 
     defaultConfig {
         applicationId = "com.example.rdchat"

@@ -1,7 +1,7 @@
 RDCHAT — CONFIGURAÇÃO ATUAL
 
 Abra a pasta raiz deste repositório no Android Studio como projeto Gradle existente.
-Requisitos alinhados: JDK 17, Android SDK Platform 37, Build Tools 36.0.0,
+Requisitos alinhados: JDK 17, Android SDK Platform 37, Build Tools 37.0.0,
 Android Gradle Plugin 9.5.1 e Gradle 9.6.0.
 
 No PowerShell:

@@ -25,9 +25,9 @@ jobs:
         uses: android-actions/setup-android@v4
         with:
           packages: ''
-      - name: Install Android SDK 37
+      - name: Install Android 17 SDK Preview
         run: |
-          sdkmanager --install "platforms;android-37" "build-tools;36.0.0"
+          sdkmanager --channel=3 --install "platforms;android-37.0" "build-tools;37.0.0"
       - name: Verify official Gradle Wrapper JAR
         run: echo "497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7  gradle/wrapper/gradle-wrapper.jar" | sha256sum --check
       - name: Gradle Wrapper
