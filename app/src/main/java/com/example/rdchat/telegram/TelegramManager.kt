@@ -56,6 +56,8 @@ class TelegramManager(
 
     private var codeForUsername = Random.nextInt(100000, 999999).toString()
     private val chatCache = ConcurrentHashMap<String, Long>()
+    private val fileMimeTypes = ConcurrentHashMap<Int, String>()
+    @Volatile private var pendingTelegramFcmToken: String? = null
     private val loginFinalized = AtomicBoolean(false)
 
     private val updates = Client.ResultHandler { obj ->
@@ -173,6 +175,7 @@ class TelegramManager(
             is TdApi.AuthorizationStateWaitPassword -> cb.onAuthState("aguardando_senha")
             is TdApi.AuthorizationStateReady -> {
                 ready = true
+                pendingTelegramFcmToken?.takeIf { it.isNotBlank() }?.let(::registerFcmDevice)
                 if (loginFinalized.compareAndSet(false, true)) afterLogin()
             }
             is TdApi.AuthorizationStateClosed -> {
@@ -354,6 +357,84 @@ class TelegramManager(
         codeForUsername = code6.filter { it.isDigit() }.take(6).ifEmpty { "000000" }
     }
 
+    /** Mantém o token FCM também registrado no serviço de notificações do Telegram para contas do Modo B. */
+    fun registrarTokenFcm(token: String) {
+        val value = token.trim()
+        if (value.isBlank()) return
+        pendingTelegramFcmToken = value
+        if (ready) registerFcmDevice(value)
+    }
+
+    private fun registerFcmDevice(token: String) {
+        if (!ready || token.isBlank()) return
+        val prefs = ctx.getSharedPreferences("rdchat_tdlib_push", Context.MODE_PRIVATE)
+        if (prefs.getString("registered_token", null) == token) return
+        val deviceToken = TdApi.DeviceTokenFirebaseCloudMessaging(token, false)
+        send(TdApi.RegisterDevice(deviceToken, longArrayOf())) { result ->
+            if (result is TdApi.PushReceiverId) {
+                prefs.edit()
+                    .putString("registered_token", token)
+                    .putLong("push_receiver_id", result.id)
+                    .apply()
+                Log.i(TAG, "Dispositivo registrado para notificações Telegram/FCM.")
+            } else if (result is TdApi.Error) {
+                Log.w(TAG, "Não foi possível registrar o token FCM na conta Telegram: ${result.message}")
+            }
+        }
+    }
+
+    /** Entrega ao TDLib o payload Telegram recebido pelo FirebaseMessagingService. */
+    fun processarPushNotification(payload: String) {
+        val value = payload.trim()
+        if (value.isBlank()) return
+        if (client == null && !start()) return
+        send(TdApi.ProcessPushNotification(value)) { result ->
+            if (result is TdApi.Error) {
+                Log.w(TAG, "TDLib não conseguiu processar o push Telegram (${result.code}): ${result.message}")
+            }
+        }
+    }
+
+    private fun inputMessageFor(envelope: String, mime: String, file: File?): TdApi.InputMessageContent {
+        val caption = TdApi.FormattedText(envelope, emptyArray())
+        if (file == null) return TdApi.InputMessageText().apply { text = caption }
+
+        val kind = try {
+            JSONObject(envelope.removePrefix("RDC1")).optString("kind").lowercase()
+        } catch (_: Exception) { "file" }
+        val normalizedMime = mime.trim().lowercase()
+        val inputFile = TdApi.InputFileLocal(file.absolutePath)
+
+        return when {
+            (kind == "image" || normalizedMime.startsWith("image/")) &&
+                normalizedMime != "image/gif" && file.length() <= 10L * 1024L * 1024L -> {
+                val photo = TdApi.InputPhoto().apply { this.photo = inputFile }
+                TdApi.InputMessagePhoto().apply { this.photo = photo; this.caption = caption }
+            }
+            kind == "video" || normalizedMime.startsWith("video/") -> {
+                val video = TdApi.InputVideo().apply {
+                    this.video = inputFile
+                    supportsStreaming = true
+                }
+                TdApi.InputMessageVideo().apply { this.video = video; this.caption = caption }
+            }
+            kind == "audio" || normalizedMime.startsWith("audio/") -> {
+                val audio = TdApi.InputAudio().apply {
+                    this.audio = inputFile
+                    title = file.name.take(64)
+                }
+                TdApi.InputMessageAudio().apply { this.audio = audio; this.caption = caption }
+            }
+            else -> {
+                val document = TdApi.InputDocument().apply {
+                    this.document = inputFile
+                    disableContentTypeDetection = false
+                }
+                TdApi.InputMessageDocument().apply { this.document = document; this.caption = caption }
+            }
+        }
+    }
+
     fun enviar(msgId: String, usernames: List<String>, envelope: String, arquivo: File?, mime: String) {
         if (!ready) {
             arquivo?.delete()
@@ -382,20 +463,7 @@ class TelegramManager(
                 }
                 val message = TdApi.SendMessage()
                 message.chatId = id
-                val caption = TdApi.FormattedText(envelope, emptyArray())
-                if (arquivo == null) {
-                    val text = TdApi.InputMessageText()
-                    text.text = caption
-                    message.inputMessageContent = text
-                } else {
-                    val inputDocument = TdApi.InputDocument()
-                    inputDocument.document = TdApi.InputFileLocal(arquivo.absolutePath)
-                    inputDocument.disableContentTypeDetection = false
-                    val document = TdApi.InputMessageDocument()
-                    document.document = inputDocument
-                    document.caption = caption
-                    message.inputMessageContent = document
-                }
+                message.inputMessageContent = inputMessageFor(envelope, mime, arquivo)
                 send(message) { result ->
                     finished((result as? TdApi.Error)?.message)
                 }
@@ -423,16 +491,62 @@ class TelegramManager(
         val payload = JSONObject()
             .put("chatId", message.chatId)
             .put("tgMessageId", message.id)
+        var fileId = 0
+        var mime = ""
+        var fileName = ""
+        var size = 0L
         when (val content = message.content) {
             is TdApi.MessageText -> payload.put("text", content.text.text)
             is TdApi.MessageDocument -> {
                 payload.put("text", content.caption.text)
-                    .put("fileId", content.document.document.id)
-                    .put("fileName", content.document.fileName)
-                    .put("mime", content.document.mimeType)
-                    .put("size", content.document.document.size)
+                fileId = content.document.document.id
+                mime = content.document.mimeType
+                fileName = content.document.fileName
+                size = content.document.document.size
+            }
+            is TdApi.MessagePhoto -> {
+                payload.put("text", content.caption.text)
+                val file = content.photo.sizes.maxByOrNull { it.width.toLong() * it.height.toLong() }?.photo
+                if (file != null) { fileId = file.id; size = file.size.toLong() }
+                mime = "image/jpeg"
+                fileName = "foto.jpg"
+            }
+            is TdApi.MessageVideo -> {
+                payload.put("text", content.caption.text)
+                fileId = content.video.video.id
+                mime = content.video.mimeType
+                fileName = content.video.fileName
+                size = content.video.video.size.toLong()
+            }
+            is TdApi.MessageAudio -> {
+                payload.put("text", content.caption.text)
+                fileId = content.audio.audio.id
+                mime = content.audio.mimeType
+                fileName = content.audio.fileName
+                size = content.audio.audio.size.toLong()
+            }
+            is TdApi.MessageVoiceNote -> {
+                payload.put("text", content.caption.text)
+                fileId = content.voiceNote.voice.id
+                mime = "audio/ogg"
+                fileName = "mensagem-de-voz.ogg"
+                size = content.voiceNote.voice.size.toLong()
+            }
+            is TdApi.MessageAnimation -> {
+                payload.put("text", content.caption.text)
+                fileId = content.animation.animation.id
+                mime = content.animation.mimeType
+                fileName = "animacao"
+                size = content.animation.animation.size.toLong()
             }
             else -> return
+        }
+        if (fileId != 0) {
+            if (mime.isNotBlank()) fileMimeTypes[fileId] = mime
+            payload.put("fileId", fileId)
+                .put("fileName", fileName)
+                .put("mime", mime)
+                .put("size", size)
         }
         cb.onMessage(payload.toString())
     }
@@ -454,7 +568,9 @@ class TelegramManager(
                     return@send
                 }
                 val encoded = Base64.encodeToString(file.readBytes(), Base64.NO_WRAP)
-                cb.onFile(requestId, "data:application/octet-stream;base64," + encoded, null)
+                val mime = fileMimeTypes[fileId]?.takeIf { it.matches(Regex("^[a-zA-Z0-9.+-]+/[a-zA-Z0-9.+-]+$")) }
+                    ?: "application/octet-stream"
+                cb.onFile(requestId, "data:$mime;base64," + encoded, null)
             } catch (error: Exception) {
                 cb.onFile(requestId, null, error.message ?: "Falha ao ler arquivo Telegram.")
             }
