@@ -14,6 +14,17 @@ firebase deploy --only firestore:rules
 
 Confira no Console Firebase que o deploy terminou no projeto `rdchat-firebasev1`. O arquivo de fonte é `firestore.rules`; não cole regras antigas por cima.
 
+
+### 1.1 Publicação automática pelo GitHub Actions
+
+O workflow `.github/workflows/deploy-firestore-rules.yml` publica regras e índices usando o secret `FIREBASE_SERVICE_ACCOUNT`. O valor deve ser o JSON completo de uma conta de serviço do projeto `rdchat-firebasev1`.
+
+Além do secret, a conta identificada pelo campo `client_email` desse JSON precisa de permissão IAM no projeto Google Cloud. Para o workflow atual, conceda o papel predefinido **Firebase Develop Admin** (`roles/firebase.developAdmin`) a essa conta em [IAM do projeto rdchat-firebasev1](https://console.cloud.google.com/iam-admin/iam?project=rdchat-firebasev1).
+
+Esse papel inclui as permissões de leitura de estado das APIs (`serviceusage.services.get`), publicação das regras (`firebaserules.*`) e gerenciamento dos índices Firestore (`datastore.*`). Ele é um papel de desenvolvimento amplo; não conceda Owner nem Editor apenas para contornar erros. Depois de salvar a função IAM, execute novamente o workflow **Deploy Firestore rules and indexes** em Actions.
+
+Nunca copie a chave privada para issues, logs ou mensagens. O workflow valida o JSON sem imprimir o conteúdo.
+
 ## 2. Ativar TTL (sete dias)
 
 O HTML já grava um Timestamp `expiresAt`. Para a exclusão ocorrer, habilite TTL nos grupos de coleção `messages` e `items`.
