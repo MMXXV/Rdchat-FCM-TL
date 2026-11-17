@@ -23,29 +23,47 @@ for (let index = 0; index < scripts.length; index++) {
 }
 
 const has = (value) => html.includes(value);
-const phoneEyeStart = html.indexOf('id="rdTgPhoneEye"');
-const phoneEyeEnd = html.indexOf("</button>", phoneEyeStart);
-const phoneEyeMarkup = phoneEyeStart >= 0 && phoneEyeEnd >= 0 ? html.slice(phoneEyeStart, phoneEyeEnd) : "";
+const loginStart = html.indexOf('<div class="screen active no-pad" id="screen-login">');
+const loginEnd = html.indexOf('<!-- ABA ONLINE -->', loginStart);
+const login = loginStart >= 0 && loginEnd > loginStart ? html.slice(loginStart, loginEnd) : "";
+const phoneEyeStart = login.indexOf('id="rdTgPhoneEye"');
+const phoneEyeEnd = login.indexOf("</button>", phoneEyeStart);
+const phoneEyeMarkup = phoneEyeStart >= 0 && phoneEyeEnd >= 0 ? login.slice(phoneEyeStart, phoneEyeEnd) : "";
+const sdkVersions = [...html.matchAll(/www\\.gstatic\\.com\\/firebasejs\\/([0-9.]+)\\/firebase-(?:app|auth|firestore)-compat\\.js/g)].map(match => match[1]);
 const checks = {
+  inlineScriptSyntax: true,
   singlePrimaryButton: (html.match(/id=["']authSubmit["']/g) || []).length === 1,
   noSeparateTelegramButtons: !has('id="rdTgSend"') && !has('id="rdTgCodeBtn"') && !has('id="rdTgPassBtn"'),
-  phoneFieldAfterPin: html.indexOf('id="regPass"') < html.indexOf('id="rdTgPhoneF"'),
+  modeSelectorIsStaticMarkup: login.includes('<div class="rd-modes" id="rdModes"'),
+  phoneFieldIsStaticMarkup: login.includes('<div class="field rd-tg-step" id="rdTgPhoneF" hidden>'),
+  phoneFieldAfterPinInLoginDom: login.indexOf('id="regPass"') >= 0 && login.indexOf('id="regPass"') < login.indexOf('id="rdTgPhoneF"'),
+  codeFieldAfterPhoneInLoginDom: login.indexOf('id="rdTgPhoneF"') < login.indexOf('id="rdTgCodeF"'),
+  twoStepPasswordAfterCodeInLoginDom: login.indexOf('id="rdTgCodeF"') < login.indexOf('id="rdTgPassF"'),
+  phoneInputIsStaticMarkup: login.includes('id="rdTgPhone"'),
+  codeInputIsStaticMarkup: login.includes('id="rdTgCode"'),
+  twoStepPasswordIsStaticMarkup: login.includes('id="rdTgPass"'),
+  noRuntimePhoneFieldConstruction: !has("'<div class=\"field rd-tg-step\" id=\"rdTgPhoneF\" hidden>'"),
   sameButtonConfirmsCode: has("submit.textContent='Confirmar código'"),
   sameButtonConfirmsTwoStepPassword: has("submit.textContent='Confirmar senha'"),
-  phoneEyeButton: has('id="rdTgPhoneEye"'),
+  phoneEyeButton: login.includes('id="rdTgPhoneEye"'),
   phoneEyeUsesEyeIcon: phoneEyeMarkup.includes("M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"),
-  phoneEyeTogglesInputType: has("input.type=showing?'tel':'password'"),
-  phoneEyeUpdatesAccessibility: has("this.setAttribute('aria-label',showing?'Ocultar número':'Mostrar número')"),
+  phoneEyeTogglesInputType: has("phone.type=showing?'tel':'password'"),
+  phoneEyeSanitizerKeepsDigits: has("this.value=this.value.replace(/[^\\\\d+()\\\\s.-]/g,'')"),
+  phoneEyeUpdatesAccessibility: has("phoneEye.setAttribute('aria-label',showing?'Ocultar número':'Mostrar número')"),
   onboardingAsksCamera: has('<b>Câmera</b>'),
   onboardingAsksMicrophone: has('<b>Microfone</b>'),
   nativeBridgeRequestsCameraAndMicrophone: has('requestCameraAndMicrophonePermissions'),
-  firebaseErrorShowsCode: has("Firebase indisponível (' + reason + ')"),
+  firebaseCompatSdkAllVersion133: sdkVersions.length === 3 && sdkVersions.every(version => version === '13.3.0'),
+  firebaseInitReportsStage: has("error.rdchatStage = firebaseInitStage"),
+  firebaseDiagnosticMapsAnonymousAuth: has("code === 'auth/operation-not-allowed'"),
+  firebaseDiagnosticMapsFirestoreRules: has("code === 'permission-denied'"),
+  firebaseErrorShowsStageAndCode: has("safeToast('Firebase · ' + stage + ' · ' + detail + ' [' + code + ']')"),
   phoneModeHidesSecondarySwitch: has('#screen-login.rd-login-phone-mode #authModeSwitch{display:none!important}'),
   failedPhonePrivacyWarnsUser: has("if(!T.phoneHidden)tt('Atenção: o Telegram não confirmou todas as restrições do número."),
   phoneModeHasCleanSelector: has('#screen-login.rd-login-phone-mode .rd-modes{'),
   privacyIntroRemoved: !has('Leve a privacidade com você.') && !has('Seja você em cada mensagem.'),
   oldPrivacyInfoRemoved: !has('id="rdTgPhoneInfo"') && !has('rdPhonePrivacyTip'),
-  onboardingStartsAtAuthorize: has("    s2();\n  })};\n})();\n</script>\n\n<!-- RDCHAT_V106_ARQUITETURA -->")
+  onboardingStartsAtAuthorize: has("    s2();\\n  })};\\n})();\\n</script>\\n\\n<!-- RDCHAT_V106_ARQUITETURA -->")
 };
 for (const [name, ok] of Object.entries(checks)) {
   if (!ok) failures.push({ check: name, message: "falhou" });
