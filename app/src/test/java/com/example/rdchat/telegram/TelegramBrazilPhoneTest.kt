@@ -22,7 +22,7 @@ class TelegramBrazilPhoneTest {
 
     @Test
     fun dddFiftyFiveIsNotMistakenForCountryCodeWithoutCountryLength() {
-        assertEquals("+5551991234567", TelegramManager.normalizeBrazilianPhone("55 99123-4567"))
+        assertEquals("+5555991234567", TelegramManager.normalizeBrazilianPhone("55 99123-4567"))
     }
 
     @Test
