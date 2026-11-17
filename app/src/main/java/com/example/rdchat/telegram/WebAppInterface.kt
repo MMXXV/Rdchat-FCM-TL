@@ -169,6 +169,27 @@ class WebAppInterface(
     }
 
     @JavascriptInterface
+    fun tdlibIniciarChamada(username: String, video: Boolean) =
+        enqueueTdlib { tg.iniciarChamada(username, video) }
+
+    @JavascriptInterface
+    fun tdlibAtenderChamada(callId: Int) = enqueueTdlib { tg.atenderChamada(callId) }
+
+    @JavascriptInterface
+    fun tdlibRecusarChamada(callId: Int) = enqueueTdlib { tg.recusarChamada(callId) }
+
+    @JavascriptInterface
+    fun tdlibEncerrarChamada(callId: Int) = enqueueTdlib { tg.encerrarChamada(callId) }
+
+    @JavascriptInterface
+    fun tdlibMutarChamada(callId: Int, muted: Boolean) =
+        enqueueTdlib { tg.mutarChamada(callId, muted) }
+
+    @JavascriptInterface
+    fun tdlibCameraChamada(callId: Int, enabled: Boolean) =
+        enqueueTdlib { tg.cameraChamada(callId, enabled) }
+
+    @JavascriptInterface
     fun tdlibConfirmarRecebimento(chatId: String, messageId: String) {
         val chat = chatId.toLongOrNull()
         val message = messageId.toLongOrNull()
@@ -202,4 +223,10 @@ class WebAppInterface(
     override fun onSent(messageId: String, ok: Boolean, error: String?) =
         js("window.RdChatTdlib&&window.RdChatTdlib.onEnviado(" +
             quote(messageId) + "," + ok + "," + quote(error) + ")")
+
+    override fun onCallEvent(json: String) =
+        js("window.RdChatTdlib&&window.RdChatTdlib.onCallEvent(" + quote(json) + ")")
+
+    override fun onCallFrame(json: String) =
+        js("window.RdChatTdlib&&window.RdChatTdlib.onCallFrame(" + quote(json) + ")")
 }
