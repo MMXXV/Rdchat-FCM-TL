@@ -44,26 +44,14 @@ function fields(values) {
   return { fields: result };
 }
 
-function authErrorMessage(error) {
-  const code = String(error.firebaseCode || error.message || "");
-  if (code.includes("OPERATION_NOT_ALLOWED")) {
-    return "Autenticação anônima DESATIVADA no Firebase Authentication (auth/operation-not-allowed).";
-  }
-  if (code.includes("API_KEY_INVALID")) {
-    return "A API key Web do Firebase foi rejeitada (auth/invalid-api-key).";
-  }
-  if (code.includes("TOO_MANY_ATTEMPTS")) {
-    return "Firebase bloqueou temporariamente a tentativa por excesso de tentativas.";
-  }
-  return code || String(error.message || error);
-}
-
 const result = {
   projectId,
   anonymousAuth: "not-tested",
-  firestoreContactCodesWrite: "not-tested",
-  firestoreUsersWrite: "not-tested",
-  firestorePresenceWrite: "not-tested",
+  firestoreUsersRead: "not-tested",
+  firestoreContactCodesRead: "not-tested",
+  firestoreContactCodesCreate: "not-tested",
+  firestoreUsersCreate: "not-tested",
+  firestorePresenceCreate: "not-tested",
   profileMetadataRules: "not-tested",
   cleanup: { firestore: "not-needed", anonymousUser: "not-needed" }
 };
@@ -74,6 +62,7 @@ let userDocCreated = false;
 let contactDocCreated = false;
 let presenceDocCreated = false;
 let testCode = "";
+let stage = "Firebase Auth anonymous";
 
 try {
   const account = await requestJson(`${authBase}/accounts:signUp?key=${encodeURIComponent(apiKey)}`, {
@@ -90,12 +79,17 @@ try {
   const smokeEmail = `rdchat-smoke-${uid.toLowerCase()}@rdchat.local`;
   const now = Date.now();
 
-  let stage = "Firestore users read authorization";
+  stage = "Firestore users read authorization";
   try {
-    await requestJson(`${firestoreBase}/users/${encodeURIComponent(uid)}`, { headers: authHeaders });
+    await requestJson(`${firestoreBase}/users/${encodeURIComponent(uid)}`, {
+      headers: authHeaders
+    });
+    result.firestoreUsersRead = "read-existing";
   } catch (error) {
-    if (error.status !== 404) throw new Error(`Firestore users read authorization: ${error.message}`);
+    if (error.status === 404) result.firestoreUsersRead = "allowed-empty";
+    else throw error;
   }
+  console.log("FIRESTORE_USERS_READ=" + result.firestoreUsersRead);
 
   stage = "Firestore contactCodes read authorization";
   let foundFreeCode = false;
@@ -108,14 +102,16 @@ try {
     } catch (error) {
       if (error.status === 404) {
         foundFreeCode = true;
+        result.firestoreContactCodesRead = "allowed-empty";
         break;
       }
-      throw new Error(`Firestore contactCodes read: ${error.message}`);
+      throw error;
     }
   }
   if (!foundFreeCode) throw new Error("Não foi possível reservar um código de contato temporário.");
+  console.log("FIRESTORE_CONTACT_CODES_READ=allowed");
 
-  stage = "Firestore contactCodes create";
+  stage = "Firestore contactCodes create (campos essenciais do login)";
   const contactUrl = `${firestoreBase}/contactCodes?documentId=${encodeURIComponent(testCode)}`;
   await requestJson(contactUrl, {
     method: "POST",
@@ -126,19 +122,16 @@ try {
       name: "RdChat Firebase Smoke Test",
       code: testCode,
       accountType: "SEM_NUMERO",
-      profileMediaVersion: "smoke-test-v1",
-      profileMediaType: "image/jpeg",
-      profileMediaName: "smoke-test.jpg",
+      tgUsername: "",
+      is_adult: true,
       updatedAt: now
     }))
   });
   contactDocCreated = true;
-  result.firestoreContactCodesWrite = "allowed";
-  result.profileMetadataRules = "allowed";
-  console.log("FIRESTORE_CONTACT_CODES_WRITE=allowed");
-  console.log("FIRESTORE_PROFILE_METADATA_RULES=allowed");
+  result.firestoreContactCodesCreate = "allowed";
+  console.log("FIRESTORE_CONTACT_CODES_CREATE=allowed");
 
-  stage = "Firestore users create";
+  stage = "Firestore users create (campos essenciais do login)";
   const userUrl = `${firestoreBase}/users?documentId=${encodeURIComponent(uid)}`;
   await requestJson(userUrl, {
     method: "POST",
@@ -149,12 +142,15 @@ try {
       displayName: "RdChat Firebase Smoke Test",
       code: testCode,
       accountType: "SEM_NUMERO",
+      tgUserId: "",
+      tgUsername: "",
+      is_adult: true,
       updatedAt: now
     }))
   });
   userDocCreated = true;
-  result.firestoreUsersWrite = "allowed";
-  console.log("FIRESTORE_USERS_WRITE=allowed");
+  result.firestoreUsersCreate = "allowed";
+  console.log("FIRESTORE_USERS_CREATE=allowed");
 
   stage = "Firestore presence create";
   const presenceUrl = `${firestoreBase}/presence?documentId=${encodeURIComponent(uid)}`;
@@ -164,14 +160,37 @@ try {
     body: JSON.stringify(fields({ uid, email: smokeEmail, online: true, updatedAt: now }))
   });
   presenceDocCreated = true;
-  result.firestorePresenceWrite = "allowed";
-  console.log("FIRESTORE_PRESENCE_WRITE=allowed");
+  result.firestorePresenceCreate = "allowed";
+  console.log("FIRESTORE_PRESENCE_CREATE=allowed");
+
+  stage = "Firestore contactCodes profile metadata update";
+  const metadataQuery = new URLSearchParams();
+  for (const field of ["profileMediaVersion", "profileMediaType", "profileMediaName"]) {
+    metadataQuery.append("updateMask.fieldPaths", field);
+  }
+  await requestJson(
+    `${firestoreBase}/contactCodes/${encodeURIComponent(testCode)}?${metadataQuery.toString()}`,
+    {
+      method: "PATCH",
+      headers: authHeaders,
+      body: JSON.stringify(fields({
+        profileMediaVersion: "smoke-test-v1",
+        profileMediaType: "image/jpeg",
+        profileMediaName: "smoke-test.jpg"
+      }))
+    }
+  );
+  result.profileMetadataRules = "allowed";
+  console.log("FIRESTORE_PROFILE_METADATA_RULES=allowed");
 } catch (error) {
-  const status = error.status ? `HTTP ${error.status}: ` : "";
-  const message = error.firebaseCode ? authErrorMessage(error) : String(error.message || error);
-  result.failureStage = typeof stage === "string" ? stage : "Firebase Auth";
-  result.failure = `${status}${message}`;
-  console.error("FIREBASE_CLIENT_SMOKE_FAILED=" + result.failure);
+  const message = String(error.message || error);
+  result.failureStage = stage;
+  result.failure = message;
+  if (stage.startsWith("Firestore contactCodes profile metadata")) {
+    result.profileMetadataRules = "denied";
+    result.profileMetadataFailure = message;
+  }
+  console.error("FIREBASE_CLIENT_SMOKE_FAILED stage=" + stage + " error=" + message);
 } finally {
   if (uid && idToken) {
     const headers = { Authorization: `Bearer ${idToken}` };
