@@ -309,9 +309,21 @@ class MainActivity : AppCompatActivity() {
                     super.onPageFinished(view, url)
                     if (isTrustedAppPage()) {
                         flushPendingNativeFcm()
-                        try { telegramBridge.tdlibIniciarSeLogado() }
-                        catch (error: Exception) {
-                            android.util.Log.e("RDCHAT_TDLIB", "Falha ao iniciar sessão Telegram.", error)
+
+                        // Não carregar TDLib no boot de contas comuns.
+                        val page = view ?: return
+                        val checkPhoneAccount = """
+                            (function() {
+                                try {
+                                    var profile = JSON.parse(localStorage.getItem('rdchat_profile') || 'null');
+                                    return !!(profile && profile.accountType === 'COM_NUMERO');
+                                } catch (_) { return false; }
+                            })()
+                        """.trimIndent()
+                        page.evaluateJavascript(checkPhoneAccount) { result ->
+                            if (result == "true" && isTrustedAppPage()) {
+                                telegramBridge.restaurarSeModoTelefone()
+                            }
                         }
                     }
                 }
@@ -1213,6 +1225,8 @@ class MainActivity : AppCompatActivity() {
             cameraImageUri = null
 
             mediaExecutor.shutdownNow()
+
+            if (::telegramBridge.isInitialized) telegramBridge.encerrar()
 
             if (::webView.isInitialized) {
                 webView.stopLoading()

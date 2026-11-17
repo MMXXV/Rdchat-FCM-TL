@@ -5,9 +5,13 @@ import android.net.Uri
 import android.util.Base64
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
+import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** Ponte TDLib complementar; MainActivity delega para ela sem substituir AndroidBridge. */
 class WebAppInterface(
@@ -19,6 +23,41 @@ class WebAppInterface(
 
     private val ctx = context.applicationContext
     private val tg = TelegramManager(ctx, this, apiId, apiHash)
+    private val closing = AtomicBoolean(false)
+    private val tdlibExecutor = Executors.newSingleThreadExecutor { task ->
+        Thread(task, "RdChat-TDLib").apply { isDaemon = true }
+    }
+
+    private fun enqueueTdlib(action: () -> Unit) {
+        if (closing.get()) return
+        try {
+            tdlibExecutor.execute {
+                try { action() }
+                catch (error: Throwable) {
+                    Log.e("RDCHAT_TDLIB", "Falha em operação TDLib.", error)
+                    onError(error.message ?: "Falha ao executar operação Telegram.")
+                }
+            }
+        } catch (error: RejectedExecutionException) {
+            if (!closing.get()) Log.w("RDCHAT_TDLIB", "Executor TDLib indisponível.", error)
+        }
+    }
+
+    fun restaurarSeModoTelefone() {
+        enqueueTdlib { tg.start() }
+    }
+
+    fun encerrar() {
+        if (!closing.compareAndSet(false, true)) return
+        try {
+            tdlibExecutor.execute {
+                try { tg.close() }
+                finally { tdlibExecutor.shutdown() }
+            }
+        } catch (_: RejectedExecutionException) {
+            tdlibExecutor.shutdownNow()
+        }
+    }
 
     private fun js(code: String) {
         web.post {
@@ -33,19 +72,19 @@ class WebAppInterface(
     private fun quote(value: String?): String = JSONObject.quote(value ?: "")
 
     @JavascriptInterface
-    fun tdlibIniciarLogin(phone: String) = tg.iniciarLogin(phone)
+    fun tdlibIniciarLogin(phone: String) = enqueueTdlib { tg.iniciarLogin(phone) }
 
     @JavascriptInterface
-    fun tdlibEnviarCodigo(code: String) = tg.enviarCodigo(code)
+    fun tdlibEnviarCodigo(code: String) = enqueueTdlib { tg.enviarCodigo(code) }
 
     @JavascriptInterface
-    fun tdlibEnviarSenha(password: String) = tg.enviarSenha(password)
+    fun tdlibEnviarSenha(password: String) = enqueueTdlib { tg.enviarSenha(password) }
 
     @JavascriptInterface
     fun tdlibDefinirCodigo(code6: String) = tg.definirCodigo(code6)
 
     @JavascriptInterface
-    fun tdlibIniciarSeLogado() = tg.start()
+    fun tdlibIniciarSeLogado() = restaurarSeModoTelefone()
 
     @JavascriptInterface
     fun enviarViaTelegram(json: String) {

@@ -111,6 +111,13 @@ class TelegramManager(
         }
     }
 
+    /** Fecha o cliente local, preservando a autorização gravada no banco TDLib. */
+    fun close() {
+        ready = false
+        synchronized(phoneLock) { pendingPhone = null }
+        if (client != null) send(TdApi.Close())
+    }
+
     private fun send(function: TdApi.Function<*>, handler: ((TdApi.Object) -> Unit)? = null) {
         val current = client
         if (current == null) {
