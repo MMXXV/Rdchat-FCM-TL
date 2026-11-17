@@ -43,6 +43,13 @@ Firebase Auth ainda é anônimo por instalação. Não existe mecanismo pronto d
 
 A fila local do FCM é SharedPreferences com até 50 eventos de wake, não um banco de mensagens. A sincronização da inbox acontece quando o HTML inicializa. Para garantir processamento autônomo com Activity fechada, falta banco nativo Room/SQLite, WorkManager e rotina autenticada de sincronização. FCM não é fila durável.
 
+## Modo A e Modo B — contrato de compatibilidade
+
+- A tela de autenticação mantém os campos Nome de usuário e PIN. No Modo B, o telefone aparece imediatamente depois do PIN; o botão principal conduz o envio do código, a confirmação do código, a senha de duas etapas e a criação/entrada no perfil local.
+- Os dois tipos de conta mantêm identidade de diretório pelo código de seis dígitos e UID Firebase. Assim, um usuário A e um usuário B podem localizar/adicionar um ao outro e conversar pelo transporte de compatibilidade Firestore/FCM.
+- Quando remetente e todos os destinatários são contas B com username Telegram disponível, o roteador tenta TDLib. Em conversas mistas, o transporte cai para Firestore/FCM e, para anexos, Bot Telegram (limite de 20 MB).
+- A implementação TDLib atual não é a API completa do Telegram: envia texto/documento pelo cliente nativo e recebe os tipos tratados pelo callback. Chamadas de voz/vídeo, chamadas recebidas, mensagens de voz nativas, stickers, reações/sincronização completa e demais recursos não podem ser presumidos como disponíveis.
+
 ## P2P e chamadas
 
 O HTML define política imutável `RDCHAT_ZERO_P2P=true`; Trystero não é carregado e `makePC` lança erro antes da criação da PeerConnection. A chamada de saída agora falha antes de pedir microfone/câmera, a sinalização de chamada não é mais enviada e sinais antigos são descartados. Os elementos visuais de chamadas ainda existem; a versão atual deve ser tratada como sem chamadas até integrar um serviço compatível com a arquitetura desejada.

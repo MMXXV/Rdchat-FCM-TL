@@ -10638,7 +10638,8 @@ window.openAvatarPicker = openAvatarPicker;
       const localBirthDate = typeof p.birthDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(p.birthDate) ? p.birthDate : null;
       const currentAge = localBirthDate && typeof window.rdAgeFromISO === 'function' ? window.rdAgeFromISO(localBirthDate) : null;
       const localMinor = currentAge !== null ? currentAge < 18 : (p.is_adult === false);
-      me = { accountType: p.accountType === 'COM_NUMERO' ? 'COM_NUMERO' : 'SEM_NUMERO', tgUserId: String(p.tgUserId || ''), tgUsername: String(p.tgUsername || ''), name: p.name, login: p.login || name.toLowerCase(), email: p.email, code: p.code || '', push: p.push || '', birthDate: localBirthDate, birthYear: localBirthDate ? Number(localBirthDate.slice(0,4)) : localBirthYear, is_adult: p.safetyRestricted === true ? false : (currentAge !== null ? currentAge >= 18 : (localMinor ? false : null)), safetyRestricted: p.safetyRestricted === true, safetyStrikeCount: Math.max(0, Number(p.safetyStrikeCount)||0) };
+      me = { accountType: (window.RDCHAT_LOGIN_ACCOUNT_TYPE === 'COM_NUMERO' && window.RdChatTdlib && window.RdChatTdlib.ready) ? 'COM_NUMERO' : (p.accountType === 'COM_NUMERO' ? 'COM_NUMERO' : 'SEM_NUMERO'), tgUserId: String((window.RDCHAT_LOGIN_ACCOUNT_TYPE === 'COM_NUMERO' && window.RdChatTdlib && window.RdChatTdlib.ready && window.RdChatTdlib.userId) || p.tgUserId || ''), tgUsername: String((window.RDCHAT_LOGIN_ACCOUNT_TYPE === 'COM_NUMERO' && window.RdChatTdlib && window.RdChatTdlib.ready && window.RdChatTdlib.username) || p.tgUsername || ''), name: p.name, login: p.login || name.toLowerCase(), email: p.email, code: p.code || '', push: p.push || '', birthDate: localBirthDate, birthYear: localBirthDate ? Number(localBirthDate.slice(0,4)) : localBirthYear, is_adult: p.safetyRestricted === true ? false : (currentAge !== null ? currentAge >= 18 : (localMinor ? false : null)), safetyRestricted: p.safetyRestricted === true, safetyStrikeCount: Math.max(0, Number(p.safetyStrikeCount)||0) };
+      if (window.RDCHAT_LOGIN_ACCOUNT_TYPE === 'COM_NUMERO' && me.accountType === 'COM_NUMERO') saveProfile();
       if (!localStorage.getItem('rdchat_device_identity_v1')) localStorage.setItem('rdchat_device_identity_v1', normEmail(p.email));
       idb = await dbOpen(p.email);
       await startSession();
@@ -10667,7 +10668,7 @@ window.openAvatarPicker = openAvatarPicker;
       const code = createContactCode();
       vaultRec = await createVault(password);
       idb = await dbOpen(email);
-      me = { accountType: (window.RdChatTdlib && window.RdChatTdlib.ready) ? 'COM_NUMERO' : 'SEM_NUMERO', tgUserId: (window.RdChatTdlib && window.RdChatTdlib.userId) || '', tgUsername: (window.RdChatTdlib && window.RdChatTdlib.username) || '', name, login, email, code, push: '', birthDate: null, birthYear: null, is_adult: null, safetyRestricted: false, safetyStrikeCount: 0 }; appPin = password; saveProfile();
+      me = { accountType: (window.RDCHAT_LOGIN_ACCOUNT_TYPE === 'COM_NUMERO' && window.RdChatTdlib && window.RdChatTdlib.ready) ? 'COM_NUMERO' : 'SEM_NUMERO', tgUserId: (window.RdChatTdlib && window.RdChatTdlib.userId) || '', tgUsername: (window.RdChatTdlib && window.RdChatTdlib.username) || '', name, login, email, code, push: '', birthDate: null, birthYear: null, is_adult: null, safetyRestricted: false, safetyStrikeCount: 0 }; appPin = password; saveProfile();
       await startSession(); syncRememberedVaultKey();
       if (typeof window.rdShowOnboarding === 'function') window.rdShowOnboarding(true); else requestPermissions();
       // A descoberta automática elimina a necessidade do pop-up 'Adicione seu primeiro contato'.
@@ -17546,14 +17547,12 @@ window.rdShowOnboarding=function(force){
     function fin(){try{localStorage.setItem('rdchat_onboard_v1','1')}catch(_){}ob.remove();res()}
     function s1(){ob.innerHTML=ILL+'<h1>Leve a privacidade com você.<br>Seja você em cada mensagem.</h1><div class="rd-ob-sub">Termos e Política de Privacidade</div><button class="rd-ob-btn" data-a="go">Continuar</button><button class="rd-ob-btn sec" data-a="rest">Restaurar ou transferir</button>';
       ob.querySelector('[data-a=go]').onclick=s2;ob.querySelector('[data-a=rest]').onclick=function(){fin();try{window.openBackupMenu&&window.openBackupMenu()}catch(_){}}}
-    function s2(){ob.innerHTML='<h2>Autorizar</h2><p class="lead">Para ajudar a enviar mensagens para pessoas que você conhece, o RdChat solicitará essas permissões.</p><div class="rd-ob-row">'+BELL+'<div><b>Notificações</b><span>Receba notificações quando receber mensagens novas.</span></div></div><div class="rd-ob-row">'+CON+'<div><b>Contatos</b><span>Encontre pessoas que você conhece. Seus contatos são criptografados de ponta a ponta e não estão visíveis para o serviço.</span></div></div><div class="rd-ob-row">'+PHN+'<div><b>Ligações</b><span>Registre o pagamento e ative recursos de chamada adicionais.</span></div></div><div class="rd-ob-foot"><button class="lk" data-a="no">Agora não</button><button class="rd-ob-btn" data-a="next">Próximo</button></div>';
+    function s2(){ob.innerHTML='<h2>Autorizar</h2><p class="lead">Para ajudar a enviar mensagens para pessoas que você conhece, o RdChat solicitará essas permissões.</p><div class="rd-ob-row">'+BELL+'<div><b>Notificações</b><span>Receba notificações quando receber mensagens novas.</span></div></div><div class="rd-ob-row">'+CON+'<div><b>Contatos</b><span>Encontre pessoas que você conhece. Seus contatos são protegidos e não ficam visíveis para outros usuários.</span></div></div><div class="rd-ob-foot"><button class="lk" data-a="no">Agora não</button><button class="rd-ob-btn" data-a="next">Próximo</button></div>';
       ob.querySelector('[data-a=no]').onclick=fin;
       ob.querySelector('[data-a=next]').onclick=async function(){
         try{await window.__rd.requestPermissions()}catch(_){}
-        try{if(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia){var m=await navigator.mediaDevices.getUserMedia({audio:true});m.getTracks().forEach(function(t){t.stop()})}}catch(_){}
-        try{if(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia){var c=await navigator.mediaDevices.getUserMedia({video:true});c.getTracks().forEach(function(t){t.stop()})}}catch(_){}
         fin()}}
-    s1();
+    s2();
   })};
 })();
 </script>
@@ -17563,10 +17562,11 @@ window.rdShowOnboarding=function(force){
 .rd-modes{display:flex;gap:4px;padding:4px;margin:0 0 14px;border-radius:22px;border:1px solid var(--cap-line,rgba(255,255,255,.12));background:linear-gradient(160deg,rgba(255,255,255,.08),rgba(255,255,255,.03));-webkit-backdrop-filter:blur(22px);backdrop-filter:blur(22px)}
 .rd-modes button{flex:1;border:0;border-radius:18px;padding:11px 8px;background:none;color:var(--text);font-size:13.5px;font-weight:700}
 .rd-modes button.on{background:var(--accent);color:var(--accent-text,#fff)}
-#rdModeB{margin-bottom:6px}#rdModeB [hidden],#rdModeB[hidden]{display:none!important}
-#rdModeB .btn{margin:2px 0 10px;width:100%}
-.rd-tg-note{font-size:12.5px;opacity:.75;line-height:1.45;margin:2px 2px 10px}
-.rd-tg-ok{color:#4ade80;font-weight:700}
+.rd-tg-step[hidden],.rd-phone-tip[hidden]{display:none!important}
+#screen-login .rd-phone-info{width:38px;height:42px;flex:0 0 38px;padding:0;display:grid;place-items:center}
+#screen-login .rd-phone-info svg{width:21px;height:21px}
+#screen-login .rd-phone-tip{margin:8px 3px 0;padding:9px 11px;border-radius:10px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-muted);font-size:11px;line-height:1.45}
+#screen-login #authSubmit:disabled{opacity:.72;cursor:wait}
 </style>
 <script id="rdchat-v106-js">
 (function(){'use strict';
@@ -17596,32 +17596,245 @@ var T=window.RdChatTdlib={ready:false,state:'idle',userId:'',username:'',phoneHi
 };
 /* ================= Login: Modo A / Modo B ================= */
 var mode='A';
+var originalSubmitAuthMode=null;
+var phoneRequested=false, requestBusy=false, phoneRequestTimer=null, phoneTipTimer=null;
+
+function profileOnDevice(){
+  try{return JSON.parse(localStorage.getItem('rdchat_profile')||'null')}catch(_){return null}
+}
+function clearPhoneRequestTimer(){
+  if(phoneRequestTimer){clearTimeout(phoneRequestTimer);phoneRequestTimer=null}
+}
+function markPhoneRequestStarted(){
+  requestBusy=true;
+  clearPhoneRequestTimer();
+  phoneRequestTimer=setTimeout(function(){
+    if(!requestBusy)return;
+    requestBusy=false;
+    if(T.state==='aguardando_codigo_envio'||T.state==='inicializando'){
+      phoneRequested=false;
+      T.state='idle';
+      tt('O Telegram demorou para responder. Confira o número e tente novamente.');
+    }
+    render();
+  },60000);
+}
+function markPhoneRequestFinished(){
+  requestBusy=false;
+  clearPhoneRequestTimer();
+}
+var nativeAuthState=T.onAuthState;
+T.onAuthState=function(state){
+  state=String(state||'');
+  // TDLib informa "idle" enquanto ainda prepara o pedido do código; não volte para o início.
+  if(state==='idle'&&phoneRequested){render();return}
+  nativeAuthState.call(T,state);
+  if(state==='aguardando_codigo'||state==='aguardando_senha'||state==='ready'||state==='fechado'){
+    phoneRequested=false;
+    markPhoneRequestFinished();
+    render();
+    if(state==='aguardando_codigo')setTimeout(function(){var e=$('rdTgCode');if(e)e.focus()},80);
+    if(state==='aguardando_senha')setTimeout(function(){var e=$('rdTgPass');if(e)e.focus()},80);
+  }
+};
+var nativeOnReady=T.onReady;
+T.onReady=function(data){
+  phoneRequested=false;
+  markPhoneRequestFinished();
+  nativeOnReady.call(T,data);
+  render();
+};
+var nativeOnError=T.onError;
+T.onError=function(message){
+  markPhoneRequestFinished();
+  if(T.state==='aguardando_codigo_envio'||T.state==='inicializando'){
+    T.state='idle';
+    phoneRequested=false;
+  }
+  nativeOnError.call(T,message);
+  render();
+};
+
 function build(){
-  var f=$('regName');if(!f||$('rdModes'))return;var field=f.closest('.field');
-  var w=document.createElement('div');
-  w.innerHTML='<div class="rd-modes" id="rdModes"><button type="button" data-m="A" class="on">Usuário e senha</button><button type="button" data-m="B">Com número</button></div>'+
-  '<div id="rdModeB" hidden><div class="field" id="rdTgPhoneF"><label>Número (com DDD)</label><div class="input-wrap"><input id="rdTgPhone" type="text" inputmode="tel" placeholder="+55 11 99999-9999" autocomplete="off"></div></div><button type="button" class="btn" id="rdTgSend">Enviar código</button>'+
-  '<div class="field" id="rdTgCodeF" hidden><label>Código recebido</label><div class="input-wrap"><input id="rdTgCode" type="text" inputmode="numeric" maxlength="8" placeholder="Código do Telegram/SMS"></div></div><button type="button" class="btn" id="rdTgCodeBtn" hidden>Confirmar código</button>'+
-  '<div class="field" id="rdTgPassF" hidden><label>Senha em duas etapas</label><div class="input-wrap"><input id="rdTgPass" type="password" placeholder="Senha do Telegram"></div></div><button type="button" class="btn" id="rdTgPassBtn" hidden>Confirmar senha</button>'+
-  '<div class="rd-tg-note" id="rdTgNote">Seu número fica oculto: ninguém vê nem encontra você por ele. O RdChat usa só o código de 6 dígitos.</div></div>';
-  while(w.firstChild)field.parentNode.insertBefore(w.firstChild,field);
-  document.querySelectorAll('#rdModes button').forEach(function(b){b.onclick=function(){mode=b.dataset.m;render()}});
-  $('rdTgSend').onclick=function(){var v=$('rdTgPhone').value.replace(/[^\d+]/g,'');if(v.replace(/\D/g,'').length<10){tt('Digite o telefone com DDD.');return}T.iniciarLogin(v)};
-  $('rdTgCodeBtn').onclick=function(){var c=$('rdTgCode').value.trim();if(c)T.enviarCodigo(c)};
-  $('rdTgPassBtn').onclick=function(){var c=$('rdTgPass').value;if(c)T.enviarSenha(c)};
-  var o=window.submitAuthMode;
-  window.submitAuthMode=function(){if(mode==='B'&&!T.ready){tt('Confirme seu número antes de continuar.');return}return o&&o.apply(this,arguments)};
+  var nameInput=$('regName'),passInput=$('regPass');
+  var submit=$('authSubmit');
+  if(!nameInput||!passInput||!submit||$('rdModes'))return;
+  var nameField=nameInput.closest('.field');
+  var passField=passInput.closest('.field');
+  if(!nameField||!passField)return;
+
+  var modes=document.createElement('div');
+  modes.className='rd-modes';
+  modes.id='rdModes';
+  modes.innerHTML='<button type="button" data-m="A" class="on">Usuário e senha</button><button type="button" data-m="B">Com número</button>';
+  nameField.parentNode.insertBefore(modes,nameField);
+
+  var fields=document.createElement('div');
+  fields.innerHTML=
+    '<div class="field rd-tg-step" id="rdTgPhoneF" hidden>'+
+      '<label for="rdTgPhone">Número de telefone</label>'+
+      '<div class="input-wrap">'+
+        '<input id="rdTgPhone" type="tel" inputmode="tel" placeholder="+55 11 99999-9999" autocomplete="tel" autocapitalize="off" spellcheck="false">'+
+        '<button type="button" class="toggle-pass rd-phone-info" id="rdTgPhoneInfo" aria-label="Informações sobre privacidade do número" title="Privacidade do número">'+
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7h.01"/></svg>'+
+        '</button>'+
+      '</div>'+
+      '<div class="rd-phone-tip" id="rdPhonePrivacyTip" role="status" aria-live="polite" hidden></div>'+
+    '</div>'+
+    '<div class="field rd-tg-step" id="rdTgCodeF" hidden>'+
+      '<label for="rdTgCode">Código recebido</label>'+
+      '<div class="input-wrap"><input id="rdTgCode" type="text" inputmode="numeric" maxlength="8" autocomplete="one-time-code" placeholder="Código do Telegram/SMS"></div>'+
+    '</div>'+
+    '<div class="field rd-tg-step" id="rdTgPassF" hidden>'+
+      '<label for="rdTgPass">Senha em duas etapas do Telegram</label>'+
+      '<div class="input-wrap"><input id="rdTgPass" type="password" autocomplete="current-password" placeholder="Senha do Telegram">'+
+      '<button type="button" class="toggle-pass" id="rdTgPassEye" aria-label="Mostrar senha do Telegram">'+
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'+
+      '</button></div>'+
+    '</div>';
+  // O telefone vem imediatamente depois do PIN; código e senha extra só aparecem durante a autenticação.
+  passField.parentNode.insertBefore(fields,passField.nextSibling);
+  $('rdTgPhoneF').after($('rdTgCodeF'),$('rdTgPassF'));
+
+  document.querySelectorAll('#rdModes button').forEach(function(button){
+    button.onclick=function(){
+      mode=button.getAttribute('data-m')==='B'?'B':'A';
+      render();
+    };
+  });
+  $('rdTgPhoneInfo').onclick=showPhonePrivacyInfo;
+  $('rdTgPassEye').onclick=function(){
+    var input=$('rdTgPass');
+    if(!input)return;
+    input.type=input.type==='password'?'text':'password';
+  };
+  $('rdTgPhone').addEventListener('input',function(){
+    this.value=this.value.replace(/[^\d+()\s.-]/g,'');
+  });
+  $('rdTgPhone').addEventListener('keydown',function(event){
+    if(event.key==='Enter'){event.preventDefault();submitPhoneMode()}
+  });
+  $('rdTgCode').addEventListener('keydown',function(event){
+    if(event.key==='Enter'){event.preventDefault();submitPhoneMode()}
+  });
+  $('rdTgPass').addEventListener('keydown',function(event){
+    if(event.key==='Enter'){event.preventDefault();submitPhoneMode()}
+  });
+  // O Enter no PIN segue para o telefone no modo B, sem disparar doRegister antes da hora.
+  passInput.addEventListener('keydown',function(event){
+    if(mode==='B'&&event.key==='Enter'){
+      event.preventDefault();event.stopPropagation();event.stopImmediatePropagation();
+      if(T.state==='aguardando_codigo')$('rdTgCode').focus();
+      else if(T.state==='aguardando_senha')$('rdTgPass').focus();
+      else $('rdTgPhone').focus();
+    }
+  },true);
+
+  originalSubmitAuthMode=window.submitAuthMode;
+  window.RDCHAT_LOGIN_ACCOUNT_TYPE='SEM_NUMERO';
+  window.submitAuthMode=function(){
+    if(mode==='B')return submitPhoneMode();
+    window.RDCHAT_LOGIN_ACCOUNT_TYPE='SEM_NUMERO';
+    return originalSubmitAuthMode&&originalSubmitAuthMode.apply(this,arguments);
+  };
   render();
 }
+function showPhonePrivacyInfo(){
+  var tip=$('rdPhonePrivacyTip');
+  if(!tip)return;
+  tip.textContent='Seu número fica oculto: ninguém vê nem encontra você por ele. O RdChat usa só o código de 6 dígitos.';
+  tip.hidden=false;
+  if(phoneTipTimer)clearTimeout(phoneTipTimer);
+  phoneTipTimer=setTimeout(function(){tip.hidden=true;phoneTipTimer=null},4200);
+}
+function validatePhoneModeIdentity(){
+  var name=String($('regName').value||'').trim();
+  var pin=String($('regPass').value||'').trim();
+  if(!/^[\p{L}\p{N}._ -]{3,32}$/u.test(name)){
+    tt('Digite seu nome de usuário (3 a 32 caracteres).');$('regName').focus();return false;
+  }
+  if(!/^[0-9]{4}$/.test(pin)){
+    tt('Digite sua senha de 4 dígitos.');$('regPass').focus();return false;
+  }
+  return true;
+}
+function startTelegramPhoneLogin(){
+  if(!validatePhoneModeIdentity())return;
+  var phone=String($('rdTgPhone').value||'').trim();
+  var digits=phone.replace(/\D/g,'');
+  if(digits.length<8||digits.length>15||phone.replace(/[^\d+]/g,'').charAt(0)!=='+'){
+    tt('Digite o telefone com código do país. Exemplo: +55 11 99999-9999.');
+    $('rdTgPhone').focus();return;
+  }
+  phoneRequested=true;
+  markPhoneRequestStarted();
+  if(!T.iniciarLogin(phone)){
+    phoneRequested=false;
+    markPhoneRequestFinished();
+    render();
+    return;
+  }
+  render();
+}
+function submitPhoneMode(){
+  var profile=profileOnDevice();
+  // Uma conta Telegram já vinculada neste aparelho continua entrando com nome + PIN local.
+  if(profile&&profile.accountType==='COM_NUMERO'){
+    window.RDCHAT_LOGIN_ACCOUNT_TYPE='COM_NUMERO';
+    return originalSubmitAuthMode&&originalSubmitAuthMode.apply(this,arguments);
+  }
+  if(T.ready){
+    window.RDCHAT_LOGIN_ACCOUNT_TYPE='COM_NUMERO';
+    return originalSubmitAuthMode&&originalSubmitAuthMode.apply(this,arguments);
+  }
+  if(requestBusy)return;
+  if(T.state==='aguardando_codigo'){
+    var code=String($('rdTgCode').value||'').trim();
+    if(!code){tt('Digite o código recebido do Telegram.');$('rdTgCode').focus();return}
+    markPhoneRequestStarted();
+    T.enviarCodigo(code);
+    return;
+  }
+  if(T.state==='aguardando_senha'){
+    var password=String($('rdTgPass').value||'');
+    if(!password){tt('Digite sua senha em duas etapas do Telegram.');$('rdTgPass').focus();return}
+    markPhoneRequestStarted();
+    T.enviarSenha(password);
+    return;
+  }
+  if(T.state==='aguardando_codigo_envio'||T.state==='inicializando')return;
+  startTelegramPhoneLogin();
+}
 function render(){
-  var mb=$('rdModeB');if(!mb)return;mb.hidden=(mode!=='B');
-  document.querySelectorAll('#rdModes button').forEach(function(b){b.classList.toggle('on',b.dataset.m===mode)});
-  var st=T.state;function sh(id,v){var e=$(id);if(e)e.hidden=!v}
-  sh('rdTgPhoneF',!T.ready&&(st==='idle'||st==='aguardando_codigo_envio'||st===''));sh('rdTgSend',!T.ready&&(st==='idle'||st===''));
-  sh('rdTgCodeF',st==='aguardando_codigo');sh('rdTgCodeBtn',st==='aguardando_codigo');
-  sh('rdTgPassF',st==='aguardando_senha');sh('rdTgPassBtn',st==='aguardando_senha');
-  var n=$('rdTgNote');if(n){if(T.ready)n.innerHTML='<span class="rd-tg-ok">Número verificado ✓</span> Agora escolha nome e senha de 4 dígitos abaixo.';
-    else n.textContent='Seu número fica oculto: ninguém vê nem encontra você por ele. O RdChat usa só o código de 6 dígitos.'}
+  var submit=$('authSubmit');
+  if(!submit)return;
+  var isPhoneMode=mode==='B';
+  var profile=profileOnDevice();
+  var knownTelegramProfile=!!(profile&&profile.accountType==='COM_NUMERO');
+  var phoneField=$('rdTgPhoneF'),codeField=$('rdTgCodeF'),passField=$('rdTgPassF');
+  if(phoneField)phoneField.hidden=!isPhoneMode;
+  if(codeField)codeField.hidden=!isPhoneMode||T.state!=='aguardando_codigo';
+  if(passField)passField.hidden=!isPhoneMode||T.state!=='aguardando_senha';
+  document.querySelectorAll('#rdModes button').forEach(function(button){
+    button.classList.toggle('on',(button.getAttribute('data-m')||'A')===mode);
+    button.setAttribute('aria-pressed',String((button.getAttribute('data-m')||'A')===mode));
+  });
+  window.RDCHAT_LOGIN_ACCOUNT_TYPE=isPhoneMode?'COM_NUMERO':'SEM_NUMERO';
+  if(isPhoneMode){
+    if(knownTelegramProfile){submit.textContent='Entrar';submit.disabled=false}
+    else if(T.ready){submit.textContent=profile&&profile.email?'Entrar':'Criar conta e entrar';submit.disabled=false}
+    else if(requestBusy){
+      submit.textContent=(T.state==='aguardando_codigo'||T.state==='aguardando_senha')?'Verificando...':'Enviando código...';
+      submit.disabled=true;
+    }
+    else if(T.state==='aguardando_codigo') {submit.textContent='Confirmar código';submit.disabled=false}
+    else if(T.state==='aguardando_senha') {submit.textContent='Confirmar senha';submit.disabled=false}
+    else if(T.state==='aguardando_codigo_envio'||T.state==='inicializando'){submit.textContent='Enviando código...';submit.disabled=true}
+    else {submit.textContent='Entrar';submit.disabled=false}
+  }else{
+    submit.disabled=false;
+    // Preserva integralmente o texto e o comportamento originais da tela A.
+  }
 }
 /* ================= Roteador de envio ================= */
 var cache={};
