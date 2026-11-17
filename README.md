@@ -31,10 +31,11 @@ Este repositório inclui os scripts e o JAR oficiais do Gradle Wrapper 9.6.0. A 
 - Texto, diretório e presença: Firestore.
 - Wake/push: Worker FCM `rdchat-fcm-gateway.edersonrgames.workers.dev`, endpoint esperado `POST /v1/push`.
 - Confirmação de wake: o serviço Android chama `POST /v1/delivered`.
-- Anexos: Worker `rdchat.edersonrgames.workers.dev`, endpoints `/v1/media`.
-- P2P/Trystero/WebRTC foram bloqueados no HTML. Chamadas de saída e sinais de chamada recebidos são bloqueados; os botões visuais ainda podem aparecer, mas não iniciam captura de áudio/vídeo.
+- Anexos: `rdchat-fcm-gateway.edersonrgames.workers.dev`, endpoints `/v1/media` (Bot Telegram + metadados Firestore + FCM). O Worker agora está versionado em `rdchat-fcm-worker/`.
+- O relay legado `rdchat.edersonrgames.workers.dev` continua separado para foto de perfil; a origem desse Worker ainda não foi recuperada.
+- P2P/Trystero/WebRTC foram bloqueados no HTML. Chamadas estão desativadas nesta versão.
 
-O código-fonte dos Workers não está neste repositório, portanto os endpoints remotos não foram alterados nem testados.
+O código local do Worker foi integrado, mas só estará ativo após publicar pelo workflow manual e configurar os secrets indicados em `rdchat-fcm-worker/README.md`.
 
 ## Telegram (TDLib)
 
@@ -51,11 +52,11 @@ O primeiro acesso prepara o banco TDLib no diretório privado do app. A chave do
 
 ## Implantação Firebase
 
-O projeto já inclui `firebase.json` e `.firebaserc`. Consulte `docs/CONFIGURAR_FIREBASE.md` para publicar regras, configurar TTL e ativar App Check.
+O projeto já inclui `firebase.json` e `.firebaserc`. Consulte `docs/CONFIGURAR_FIREBASE.md` para publicar regras, configurar TTL, habilitar Auth anônima e implantar o Worker FCM + Telegram.
 
 ## Expiração da fila
 
-Mensagens, inbox, convites e eventos de exclusão passam a receber `expiresAt` com janela de sete dias. É obrigatório ativar TTL no Firebase Console para o campo `expiresAt` nas coleções relevantes. Até a política estar ativa, os documentos não são removidos automaticamente.
+Mensagens de texto, inbox, convites e exclusões usam o prazo definido no cliente (sete dias). Anexos do Bot Telegram têm janela remota de 40 horas, necessária para que o Bot API consiga removê-los fisicamente. Ative TTL em `messages` e `items`; o Worker limpa `telegramMedia`, o canal privado e os ponteiros relacionados.
 
 ## Pendências e limites
 

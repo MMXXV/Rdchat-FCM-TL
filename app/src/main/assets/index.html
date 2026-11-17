@@ -11633,6 +11633,7 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
     }
   }
   const RELAY_API = String(window.RDCHAT_RELAY_API || '').trim().replace(/\/+$/, '');
+  const MEDIA_API = String(window.RDCHAT_MEDIA_API || FCM_PUSH_API || '').trim().replace(/\/+$/, '');
   async function relayRequest(path, options) {
     if (!RELAY_API) throw new Error('Gateway de mídia/FCM ainda não configurado.');
     if (!initialized) await initializeFirebase();
@@ -11644,6 +11645,21 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
     const contentType = response.headers.get('content-type') || '';
     if (contentType.includes('application/json')) payload = await response.json();
     if (!response.ok) throw new Error((payload && payload.error) || ('Gateway respondeu HTTP ' + response.status));
+    return payload || response;
+  }
+  async function mediaGatewayRequest(path, options) {
+    if (!MEDIA_API) throw new Error('Gateway de mídia Telegram não configurado.');
+    if (!initialized) await initializeFirebase();
+    if (!auth || !auth.currentUser) throw new Error('Sessão Firebase indisponível.');
+    const idToken = await auth.currentUser.getIdToken(true);
+    const headers = Object.assign({}, options && options.headers || {}, { Authorization: 'Bearer ' + idToken });
+    const response = await fetch(MEDIA_API + path, Object.assign({}, options || {}, { headers }));
+    const contentType = response.headers.get('content-type') || '';
+    const payload = contentType.includes('application/json') ? await response.json() : null;
+    if (!response.ok || (payload && payload.ok === false)) {
+      throw new Error((payload && payload.error) || ('Gateway de mídia respondeu HTTP ' + response.status));
+    }
+    if (String(options && options.method || 'GET').toUpperCase() === 'GET') return response;
     return payload || response;
   }
   async function fcmGatewayRequest(path, options) {
@@ -11670,7 +11686,7 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
     }
   }
   async function sendTelegramMedia(target, message) {
-    if (!RELAY_API) throw new Error('Telegram relay não configurado.');
+    if (!MEDIA_API) throw new Error('Telegram media gateway não configurado.');
     if (!initialized) await initializeFirebase();
     const info = await resolveTextTarget(target);
     await fs.collection('textConversations').doc(info.roomId).set({ members: info.memberUids, updatedAt: Date.now(), schema: 1,
@@ -11679,7 +11695,7 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
     if (!source) throw new Error('Arquivo sem conteúdo.');
     const blob = await (await fetch(source)).blob();
     if (!blob || !blob.size) throw new Error('Não foi possível ler o arquivo para enviar.');
-    if (blob.size > 20 * 1024 * 1024) throw new Error('O limite desta integração Telegram é 20 MiB por arquivo.');
+    if (blob.size > 20_000_000) throw new Error('O limite desta integração Telegram é 20 MB por arquivo.');
     const form = new FormData();
     form.append('file', blob, (message.viewOnce ? 'rdvo-' : '') + String(message.name || ('rdchat-' + message.kind)));
     if (message.viewOnce) form.append('viewOnce', '1');
@@ -11689,7 +11705,7 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
     form.append('kind', String(message.kind || 'file'));
     form.append('mimeType', String(message.mime || blob.type || 'application/octet-stream'));
     if (message.reply) form.append('reply', JSON.stringify({ id: String(message.reply.id || ''), text: String(message.reply.text || '').slice(0, 500), from: String(message.reply.from || '') }));
-    const uploaded = await relayRequest('/v1/media', { method: 'POST', body: form });
+    const uploaded = await mediaGatewayRequest('/v1/media', { method: 'POST', body: form });
     await watchTextConversation(target);
     return { roomId: info.roomId, id: String(message.id || ''), mediaId: uploaded.mediaId, toUids: info.recipientUids, toEmails: info.emails, size: blob.size };
   }
@@ -11701,7 +11717,7 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
   }
   async function downloadTelegramMedia(mediaId) {
     if (String(mediaId).indexOf('tdlib:') === 0 && window.RdChatTdlib) return await window.RdChatTdlib.baixar(String(mediaId).slice(6));
-    const response = await relayRequest('/v1/media/' + encodeURIComponent(String(mediaId)), { method: 'GET' });
+    const response = await mediaGatewayRequest('/v1/media/' + encodeURIComponent(String(mediaId)), { method: 'GET' });
     const blob = await response.blob();
     if (!blob || !blob.size) throw new Error('O arquivo ainda não está disponível no Telegram.');
     return await fileToDataURL(blob);
@@ -12001,6 +12017,10 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
     const roomRef=fs.collection('textConversations').doc(info.roomId);
     await roomRef.set({members:info.memberUids,updatedAt:Date.now(),schema:1,group:info.group,groupKey:info.groupKey,groupName:info.groupName},{merge:true});
     const ref=roomRef.collection('messages').doc(String(original.id));
+    if (original.telegramMediaId && MEDIA_API) {
+      try { await mediaGatewayRequest('/v1/media/' + encodeURIComponent(String(original.telegramMediaId)), { method: 'DELETE' }); }
+      catch (mediaError) { console.warn('RdChat: exclusão do arquivo no Telegram ficou pendente.', mediaError); }
+    }
     const prior=await ref.get();
     if(prior.exists && String((prior.data()||{}).fromUid||'')!==String(currentUid)) throw new Error('O usuário atual não é o autor original desta mensagem.');
     await ref.set({id:String(original.id),roomId:info.roomId,kind:'deleted',deletedForEveryone:true,deletedAt:Number(event.deletedAt)||Date.now(),deletedBy:String(event.deletedBy||me.email),deletedByName:String(event.deletedByName||me.name||'Você').slice(0,40),fromUid:currentUid,toUid:info.recipientUids[0],toUids:info.recipientUids,fromEmail:String((me&&me.email)||''),toEmail:info.emails[0]||'',toEmails:info.emails,fromName:String((me&&me.name)||'Contato').slice(0,40),fromCode:codeNorm(me&&me.code),ts:Number(original.ts)||Date.now(),expiresAt:firebase.firestore.Timestamp.fromMillis(Date.now()+7*24*60*60*1000),deliveredBy:prior.exists?((prior.data()||{}).deliveredBy||[]):[],readBy:prior.exists?((prior.data()||{}).readBy||[]):[],group:info.group,groupKey:info.groupKey,groupName:info.groupName,participantEmails:info.participantEmails},{merge:true});
@@ -12025,7 +12045,7 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
     getAccountType,
     sendCallSignal,
     publishProfilePhoto,
-    get relayConfigured() { return !!RELAY_API; },
+    get relayConfigured() { return !!MEDIA_API; },
     watchTextConversation,
     syncPendingMessages: syncPendingMessages,
     markTextRead: acknowledgeTextRead,

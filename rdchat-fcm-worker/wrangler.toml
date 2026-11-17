@@ -1,0 +1,11 @@
+name = "rdchat-fcm-gateway"
+main = "src/index.js"
+compatibility_date = "2026-11-17"
+workers_dev = true
+
+[vars]
+FIREBASE_PROJECT_ID = "rdchat-firebasev1"
+FIREBASE_API_KEY = "AIzaSyDe94q7FTo4T8jA2lFKRH_zO9GcJR_nOiM"
+
+[triggers]
+crons = ["0 * * * *"]

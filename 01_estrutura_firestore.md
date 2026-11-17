@@ -12,6 +12,7 @@ Os códigos são armazenados com seis dígitos sem hífen (`123456`). A interfac
 - `textConversations/{room}`: membros e metadados da conversa.
 - `textConversations/{room}/messages/{messageId}`: texto, recibos e tombstones de exclusão.
 - `messageInbox/{uid}/items/{itemId}`: ponteiros para mensagens e convites.
+- `telegramMedia/{mediaId}`: referência privada ao arquivo armazenado no canal Telegram, participantes autorizados e data de expiração.
 
 ## Publicar regras
 
@@ -21,11 +22,11 @@ O repositório contém `firebase.json` e `.firebaserc`: execute `firebase login`
 
 O cliente resolve o UID pelo código, cria/atualiza o documento da sala, grava a mensagem e cria um item por destinatário em `messageInbox`. Em seguida chama o Worker FCM `/v1/push` para acordar o aparelho. O FCM é um aviso de sincronização; o conteúdo é recuperado do Firestore quando o HTML inicializa.
 
-A exclusão para todos também grava um tombstone na sala e um ponteiro de inbox. A mídia depende do Worker HTTP de relay e precisa ser validada separadamente.
+A mídia passa pelo Worker `rdchat-fcm-gateway`: o arquivo é guardado no canal privado Telegram; metadados e ponteiros são escritos pelo Worker em `textConversations`, `telegramMedia` e `messageInbox`; em seguida o Worker dispara o FCM. O download exige Firebase ID token e valida que o UID está entre o remetente/destinatários. A exclusão para todos tenta remover a cópia do canal e publica o tombstone no Firestore.
 
 ## TTL de sete dias
 
-O HTML escreve `expiresAt` (Firestore Timestamp) nos documentos de mensagem, inbox, convites de grupo e exclusões. **A gravação do campo não ativa a exclusão automática.** No Firebase Console/Google Cloud Console, abra Firestore → Time-to-live → Create Policy e crie:
+O HTML escreve `expiresAt` nos documentos de texto, inbox, convites e exclusões. Os anexos Telegram usam uma expiração remota própria de aproximadamente 40 horas, pois o Bot API só permite excluir mensagens do canal antes de 48 horas. **A gravação do campo não ativa a exclusão automática.** No Firebase Console/Google Cloud Console, abra Firestore → Time-to-live → Create Policy e crie:
 - Collection group: `messages`; campo: `expiresAt`.
 - Collection group: `items`; campo: `expiresAt`.
 
