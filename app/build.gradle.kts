@@ -32,8 +32,8 @@ val prepareRdchatAssets = tasks.register("prepareRdchatAssets") {
 
     doLast {
         val outputDir = generatedRdchatAssets.get().asFile
-        delete(outputDir)
-        copy {
+        project.delete(outputDir)
+        project.copy {
             from(sourceAssets)
             into(outputDir)
         }
@@ -166,7 +166,7 @@ val prepareRdchatAssets = tasks.register("prepareRdchatAssets") {
 </style>
 """.trimIndent()
 
-        replaceExactlyOnce("</head>", "$referenceCss\\n</head>", "inserção do estilo da referência")
+        replaceExactlyOnce("</head>", "$referenceCss\n</head>", "inserção do estilo da referência")
         require(html.contains("id=\"rdTgPhone\" type=\"tel\"") &&
             html.contains("placeholder=\"Digite seu telefone\"") &&
             html.contains("rdchat-login-number-reference-v1")) {
