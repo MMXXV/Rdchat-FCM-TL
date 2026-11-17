@@ -1,0 +1,41 @@
+name: Deploy Firestore rules and indexes
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "firestore.rules"
+      - "firestore.indexes.json"
+      - "firebase.json"
+      - ".firebaserc"
+      - ".github/workflows/deploy-firestore-rules.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      FIREBASE_SERVICE_ACCOUNT: \${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Validate Firebase service account secret
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e 'const x=JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT || "null"); if (!x || x.type !== "service_account" || !x.project_id || !x.client_email || !x.private_key) process.exit(1); if (x.project_id !== "rdchat-firebasev1") process.exit(2);'
+      - name: Configure Application Default Credentials without printing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEY_FILE="$RUNNER_TEMP/rdchat-firebase-service-account.json"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$KEY_FILE"
+          chmod 600 "$KEY_FILE"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$KEY_FILE" >> "$GITHUB_ENV"
+      - name: Deploy Firestore rules and indexes
+        run: npx --yes firebase-tools@15.36.0 deploy --only firestore:rules,firestore:indexes --project rdchat-firebasev1 --non-interactive
