@@ -115,7 +115,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         if (shouldSuppressNotification(senderId)) {
             Log.i("RDCHAT_FCM", "NOTIFICATION_SUPPRESSED same_sender_chat_open senderId=$senderId")
         } else {
-            showDataNotification(title, body, type)
+            showDataNotification(title, body, type, data, senderId)
         }
     }
 
@@ -178,7 +178,13 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         // e exatamente o contato da conversa atualmente aberta.
         return activeUid.isNotBlank() && activeUid.equals(senderId, ignoreCase = true)
     }
-    private fun showDataNotification(title: String, body: String, type: String) {
+    private fun showDataNotification(
+        title: String,
+        body: String,
+        type: String,
+        data: Map<String, String>,
+        senderId: String
+    ) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) return
