@@ -40,7 +40,7 @@ jobs:
         run: node scripts/check-project-contract.mjs
       - name: Verify Telegram API hash secret
         env:
-          TELEGRAM_API_HASH: \${{ secrets.TELEGRAM_API_HASH }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
         run: |
           if ! printf '%s' "$TELEGRAM_API_HASH" | grep -Eq '^[0-9a-fA-F]{32}$'; then
             echo "::error::Configure a valid 32-character TELEGRAM_API_HASH repository secret."
@@ -48,7 +48,7 @@ jobs:
           fi
       - name: Compile and unit tests
         env:
-          TELEGRAM_API_HASH: \${{ secrets.TELEGRAM_API_HASH }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
         run: ./gradlew --no-daemon :app:assembleDebug :app:testDebugUnitTest
       - name: Upload ARM64 debug APK
         uses: actions/upload-artifact@v4
