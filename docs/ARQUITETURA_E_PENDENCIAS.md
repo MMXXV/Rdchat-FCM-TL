@@ -45,10 +45,14 @@ A fila local do FCM é SharedPreferences com até 50 eventos de wake, não um ba
 
 ## Modo A e Modo B — contrato de compatibilidade
 
-- A tela de autenticação mantém os campos Nome de usuário e PIN. No Modo B, o telefone aparece imediatamente depois do PIN; o botão principal conduz o envio do código, a confirmação do código, a senha de duas etapas e a criação/entrada no perfil local.
+- A tela do Modo A (Usuário e senha) foi preservada sem mudança visual.
+- A tela do Modo B usa a mesma estrutura de campos, na ordem Nome de usuário → PIN local de quatro dígitos → telefone. O botão ao lado do telefone usa o mesmo ícone de olho do PIN e abre a explicação de privacidade, que desaparece após 4,2 segundos. Código de autenticação e senha 2FA só aparecem na etapa em que são necessários.
+- No Modo B, o botão azul original é a única ação principal: ele inicia o envio do código, confirma o código, confirma a senha 2FA e conclui a criação/entrada local. O link secundário de alternância login/cadastro fica oculto apenas no Modo B.
+- O onboarding não contém mais a etapa de apresentação “Leve a privacidade com você”; ele abre diretamente em “Autorizar”. Notificações e contatos são solicitados nessa etapa; câmera e microfone permanecem sob demanda.
+- Nome de usuário e PIN de quatro dígitos são credenciais locais do perfil/cofre RdChat, não autenticação remota Firebase. O número e o código recebido autenticam a sessão Telegram via TDLib; a senha 2FA é a senha da própria conta Telegram. A restauração do perfil/histórico RdChat em outro aparelho ainda não é automática.
 - Os dois tipos de conta mantêm identidade de diretório pelo código de seis dígitos e UID Firebase. Assim, um usuário A e um usuário B podem localizar/adicionar um ao outro e conversar pelo transporte de compatibilidade Firestore/FCM.
 - Quando remetente e todos os destinatários são contas B com username Telegram disponível, o roteador tenta TDLib. Em conversas mistas, o transporte cai para Firestore/FCM e, para anexos, Bot Telegram (limite de 20 MB).
-- A implementação TDLib atual não é a API completa do Telegram: envia texto/documento pelo cliente nativo e recebe os tipos tratados pelo callback. Chamadas de voz/vídeo, chamadas recebidas, mensagens de voz nativas, stickers, reações/sincronização completa e demais recursos não podem ser presumidos como disponíveis.
+- A implementação TDLib atual não é a API completa do Telegram: autentica contas, aplica tentativas de privacidade do número, envia texto e arquivos como documento genérico e recebe apenas `MessageText` e `MessageDocument`. Fotos/vídeos/áudios/stickers/reactions não têm tratamento nativo completo. Chamadas de voz/vídeo, chamadas recebidas, notificações TDLib em segundo plano e sincronização geral de chats ainda não estão implementadas.
 
 ## P2P e chamadas
 
@@ -61,6 +65,7 @@ O HTML define política imutável `RDCHAT_ZERO_P2P=true`; Trystero não é carre
 - O carregamento TDLib só é acionado após a página confiável carregar e confirmar `rdchat_profile.accountType === 'COM_NUMERO'`; o Modo A (`SEM_NUMERO`) não inicializa TDLib.
 - A dependência TDLib JNI continua empacotada no APK único; ela ainda contribui para o tamanho do APK, embora não seja inicializada no Modo A.
 - O início de autenticação aguarda o estado `AuthorizationStateWaitPhoneNumber`; o número não é enviado antes de `SetTdlibParameters` concluir.
+- A privacidade de número ainda precisa de validação real: o código tenta ocultar o número e bloquear descoberta por telefone, mas hoje permite fallback para “somente contatos” se o bloqueio total falhar. Nesse caso, a frase “ninguém vê nem encontra” não está garantida; remover o fallback e testar o retorno da API antes de apresentar isso como proteção confirmada.
 - A chave aleatória do banco TDLib é protegida com AES-GCM e Android Keystore.
 - O usuário existente mantém o próprio username Telegram; um username técnico só é criado se não houver um.
 

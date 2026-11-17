@@ -17536,7 +17536,6 @@ window.rdOpenMediaEditor=function(o){return new Promise(function(resolve){
   });
 })};
 /* ---------- Onboarding ---------- */
-var ILL='<svg class="rd-ob-ill" viewBox="0 0 300 320"><rect x="20" y="10" width="170" height="250" rx="22" fill="#2a5a85" stroke="#f1f1f4" stroke-width="7"/><rect x="70" y="10" width="70" height="12" rx="6" fill="#f1f1f4"/><path d="M30 200c0-60 40-100 100-110l40 50-40 90-20 30z" fill="#c93a00"/><path d="M110 90l30-5-8 70-30 5z" fill="#e1e3ea"/><path d="M45 180l45-40 35 60-30 60h-50z" fill="#a8c8d4"/><path d="M95 210l35-20 10 80-45 0z" fill="#0b7a8a"/><circle cx="150" cy="60" r="34" fill="#1d1b57"/><path d="M130 85c15 6 35-2 45-20l5 20c-10 20-35 28-50 20z" fill="#b08968"/><circle cx="232" cy="152" r="18" fill="#1d1b57"/><path d="M222 160c8 8 20 6 26-4l2 14c-8 12-24 12-30 2z" fill="#b08968"/><path d="M205 190l55-12 20 50-30 8-18-26z" fill="#d11a40"/><path d="M210 232h40l-6 30h-30z" fill="#a8c8d4"/><path d="M214 260l-8 50M238 260l12 50" stroke="#a17a58" stroke-width="12" stroke-linecap="round"/><path d="M196 308h28M232 308h30" stroke="#f1f1f4" stroke-width="9" stroke-linecap="round"/></svg>';
 var BELL='<svg viewBox="0 0 56 56"><path d="M28 8c-9 0-14 7-14 16v9l-5 8h38l-5-8v-9c0-9-5-16-14-16z" fill="#ffe3a3" stroke="#a87c2a" stroke-width="2.5"/><path d="M22 46a6 6 0 0 0 12 0z" fill="#ffe3a3" stroke="#a87c2a" stroke-width="2.5"/></svg>';
 var CON='<svg viewBox="0 0 56 56"><circle cx="28" cy="28" r="25" fill="#c9d1f2" stroke="#6b78b0" stroke-width="3"/><circle cx="28" cy="22" r="8" fill="#e3e7fa" stroke="#6b78b0" stroke-width="2.5"/><path d="M12 44c3-9 9-12 16-12s13 3 16 12" fill="#e3e7fa" stroke="#6b78b0" stroke-width="2.5"/></svg>';
 var PHN='<svg viewBox="0 0 56 56"><path d="M14 8l8-2 5 12-6 4a28 28 0 0 0 13 13l4-6 12 5-2 8c-1 3-4 5-7 5C27 47 9 29 9 15c0-3 2-6 5-7z" fill="#c9d1f2" stroke="#6b78b0" stroke-width="2.5" stroke-linejoin="round"/></svg>';
@@ -17545,8 +17544,6 @@ window.rdShowOnboarding=function(force){
   return new Promise(function(res){
     var ob=document.createElement('div');ob.className='rd-ob';host().appendChild(ob);
     function fin(){try{localStorage.setItem('rdchat_onboard_v1','1')}catch(_){}ob.remove();res()}
-    function s1(){ob.innerHTML=ILL+'<h1>Leve a privacidade com você.<br>Seja você em cada mensagem.</h1><div class="rd-ob-sub">Termos e Política de Privacidade</div><button class="rd-ob-btn" data-a="go">Continuar</button><button class="rd-ob-btn sec" data-a="rest">Restaurar ou transferir</button>';
-      ob.querySelector('[data-a=go]').onclick=s2;ob.querySelector('[data-a=rest]').onclick=function(){fin();try{window.openBackupMenu&&window.openBackupMenu()}catch(_){}}}
     function s2(){ob.innerHTML='<h2>Autorizar</h2><p class="lead">Para ajudar a enviar mensagens para pessoas que você conhece, o RdChat solicitará essas permissões.</p><div class="rd-ob-row">'+BELL+'<div><b>Notificações</b><span>Receba notificações quando receber mensagens novas.</span></div></div><div class="rd-ob-row">'+CON+'<div><b>Contatos</b><span>Encontre pessoas que você conhece. Seus contatos são protegidos e não ficam visíveis para outros usuários.</span></div></div><div class="rd-ob-foot"><button class="lk" data-a="no">Agora não</button><button class="rd-ob-btn" data-a="next">Próximo</button></div>';
       ob.querySelector('[data-a=no]').onclick=fin;
       ob.querySelector('[data-a=next]').onclick=async function(){
@@ -17562,6 +17559,10 @@ window.rdShowOnboarding=function(force){
 .rd-modes{display:flex;gap:4px;padding:4px;margin:0 0 14px;border-radius:22px;border:1px solid var(--cap-line,rgba(255,255,255,.12));background:linear-gradient(160deg,rgba(255,255,255,.08),rgba(255,255,255,.03));-webkit-backdrop-filter:blur(22px);backdrop-filter:blur(22px)}
 .rd-modes button{flex:1;border:0;border-radius:18px;padding:11px 8px;background:none;color:var(--text);font-size:13.5px;font-weight:700}
 .rd-modes button.on{background:var(--accent);color:var(--accent-text,#fff)}
+#screen-login.rd-login-phone-mode #authModeSwitch{display:none!important}
+#screen-login.rd-login-phone-mode .rd-modes{gap:6px;padding:0;margin:0 0 12px;border:0;border-radius:0;background:transparent;-webkit-backdrop-filter:none;backdrop-filter:none}
+#screen-login.rd-login-phone-mode .rd-modes button{min-height:40px;padding:8px 10px;border:1px solid var(--border);border-radius:12px;background:var(--surface-2);color:var(--text-muted)}
+#screen-login.rd-login-phone-mode .rd-modes button.on{border-color:var(--accent);background:var(--accent);color:var(--accent-text,#fff)}
 .rd-tg-step[hidden],.rd-phone-tip[hidden]{display:none!important}
 #screen-login .rd-phone-info{width:38px;height:42px;flex:0 0 38px;padding:0;display:grid;place-items:center}
 #screen-login .rd-phone-info svg{width:21px;height:21px}
@@ -17676,7 +17677,7 @@ function build(){
       '<div class="input-wrap">'+
         '<input id="rdTgPhone" type="tel" inputmode="tel" placeholder="+55 11 99999-9999" autocomplete="tel" autocapitalize="off" spellcheck="false">'+
         '<button type="button" class="toggle-pass rd-phone-info" id="rdTgPhoneInfo" aria-label="Informações sobre privacidade do número" title="Privacidade do número">'+
-          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7h.01"/></svg>'+
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'+
         '</button>'+
       '</div>'+
       '<div class="rd-phone-tip" id="rdPhonePrivacyTip" role="status" aria-live="polite" hidden></div>'+
@@ -17809,6 +17810,8 @@ function render(){
   var submit=$('authSubmit');
   if(!submit)return;
   var isPhoneMode=mode==='B';
+  var loginScreen=$('screen-login');
+  if(loginScreen)loginScreen.classList.toggle('rd-login-phone-mode',isPhoneMode);
   var profile=profileOnDevice();
   var knownTelegramProfile=!!(profile&&profile.accountType==='COM_NUMERO');
   var phoneField=$('rdTgPhoneF'),codeField=$('rdTgCodeF'),passField=$('rdTgPassF');

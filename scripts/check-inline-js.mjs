@@ -30,6 +30,11 @@ const checks = {
   sameButtonConfirmsCode: has("submit.textContent='Confirmar código'"),
   sameButtonConfirmsTwoStepPassword: has("submit.textContent='Confirmar senha'"),
   privacyInfoIcon: has('id="rdTgPhoneInfo"'),
+  privacyInfoUsesEye: has('<path d="M1 12s4-8 11 8 11 8-4 8-11 8-11-8z"/>') && !has('M12 11v5M12 7h.01'),
+  privacyInfoAutoHides: has('},4200);'),
+  phoneModeHidesSecondarySwitch: has('#screen-login.rd-login-phone-mode #authModeSwitch{display:none!important}'),
+  phoneModeHasCleanSelector: has('#screen-login.rd-login-phone-mode .rd-modes{'),
+  privacyIntroRemoved: !has('Leve a privacidade com você.') && !has('Seja você em cada mensagem.'),
   privacyInfoExactText: has('Seu número fica oculto: ninguém vê nem encontra você por ele. O RdChat usa só o código de 6 dígitos.'),
   onboardingStartsAtAuthorize: has("    s2();\n  })};\n})();\n</script>\n\n<!-- RDCHAT_V106_ARQUITETURA -->")
 };
