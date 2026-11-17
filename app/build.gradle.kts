@@ -85,6 +85,9 @@ dependencies {
     // TDLib JNI + Java API, pinned to an immutable commit; includes arm64-v8a and x86_64.
     implementation("com.github.capullo-tech:lib-tdlib-android:7dede3f1a716b7398caf79acd413ad9d5331f079")
 
+    // Native WebRTC media engine used together with TDLib call signaling.
+    implementation("io.github.pytgcalls:ntgcalls:3.0.5")
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
