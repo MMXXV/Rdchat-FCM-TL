@@ -11559,7 +11559,7 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
       const filename = String(myAvatarName || 'perfil').replace(/[^A-Za-z0-9._ -]/g, '_').slice(0, 100) || 'perfil';
       form.append('file', blob, filename);
     }
-    return relayRequest('/v1/profile', { method: 'POST', body: form });
+    return mediaGatewayRequest('/v1/profile', { method: 'POST', body: form });
   }
   async function publishCurrentProfilePhoto() {
     if (!me || !myAvatarData) return false;
@@ -11613,7 +11613,7 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
         const chatMeta = meta[email];
         if (chatMeta) { chatMeta.name = patch.name; chatMeta.avatarData = photo; chatMeta.profileMediaVersion = version; saveChatMeta(chatMeta); }
         if (version && nextType && profile.uid && (previousVersion !== version || !cachedMedia)) {
-          relayRequest('/v1/profile/' + encodeURIComponent(String(profile.uid)), { method: 'GET' }).then(async result => {
+          mediaGatewayRequest('/v1/profile/' + encodeURIComponent(String(profile.uid)), { method: 'GET' }).then(async result => {
             if (!result || typeof result.blob !== 'function') return;
             const blob = await result.blob();
             if (!blob || !blob.size || String((peerProfileByEmail.get(email) || {}).profileMediaVersion || '') !== version) return;

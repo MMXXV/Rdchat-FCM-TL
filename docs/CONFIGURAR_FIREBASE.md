@@ -40,7 +40,9 @@ O app recebe FCM nativo. O Worker unificado está em `rdchat-fcm-worker/` e exp�
 - `POST /v1/delivered` — grava confirmação de entrega enviada pelo Android;
 - `POST /v1/media` — envia arquivo ao canal privado Telegram, cria o documento da mensagem/inbox e envia FCM;
 - `GET /v1/media/{mediaId}` — baixa a mídia com autenticação e checagem de participante;
-- `DELETE /v1/media/{mediaId}` — remove o arquivo do canal quando permitido pelo Telegram.
+- `DELETE /v1/media/{mediaId}` — remove o arquivo do canal quando permitido pelo Telegram;
+- `POST /v1/profile` — atualiza prévia compacta em `users`/`contactCodes` e armazena mídia completa no canal privado;
+- `GET /v1/profile/{uid}` — permite ao próprio usuário ou a um contato adicionado baixar a mídia completa.
 
 Para publicar, configure os GitHub Actions Secrets `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `FIREBASE_SERVICE_ACCOUNT`, `TELEGRAM_BOT_TOKEN` e `TELEGRAM_CHANNEL_ID`. Execute Actions → **Deploy RdChat FCM + Telegram Worker**. O workflow não revela os valores dos secrets. Não coloque service account, token do BotFather nem chave privada no HTML/APK/Git.
 
@@ -48,7 +50,7 @@ Para publicar, configure os GitHub Actions Secrets `CLOUDFLARE_API_TOKEN`, `CLOU
 
 Crie um bot pelo BotFather e um canal **privado** exclusivo para os anexos. Adicione o bot como administrador com permissão para publicar e excluir mensagens. Cadastre `TELEGRAM_BOT_TOKEN` e `TELEGRAM_CHANNEL_ID` nos GitHub Actions Secrets; não os envie no chat nem os grave no repositório.
 
-O Bot API oficial limita o download a 20 MB e a exclusão de mensagens a menos de 48 horas. Por isso o app limita anexos a 20.000.000 bytes e o Worker programa a limpeza remota por volta de 40–41 horas. O destinatário precisa baixar a mídia dentro dessa janela. O texto continua com seu prazo próprio de sete dias. Consulte `rdchat-fcm-worker/README.md` antes de implantar.
+O Bot API oficial limita o download a 20 MB e a exclusão de mensagens a menos de 48 horas. Por isso o app limita anexos a 20.000.000 bytes e o Worker programa a limpeza remota por volta de 40–41 horas. O destinatário precisa baixar anexos de conversa dentro dessa janela. Mídia completa de perfil permanece disponível enquanto for a versão ativa; versões antigas que não puderem ser apagadas antes de 48 horas podem ficar como arquivos órfãos no canal privado. O texto continua com seu prazo próprio de sete dias. Consulte `rdchat-fcm-worker/README.md` antes de implantar.
 
 ## 5. App Check e enumeração de códigos
 
@@ -65,8 +67,9 @@ Use duas instalações Android e duas contas:
 4. conferir recebimento com app em primeiro plano, segundo plano e processo encerrado;
 5. confirmar recibos, exclusão para todos e convites de grupo;
 6. enviar e baixar imagem, vídeo, áudio, GIF e documento, sempre dentro de 20 MB, e verificar o recebimento FCM;
-7. excluir para todos e conferir que o arquivo é removido do canal privado;
-8. conferir a limpeza automática de anexos após a janela de aproximadamente 40 horas;
-9. testar notificações com app aberto, minimizado e processo encerrado.
+7. trocar foto/vídeo do perfil em uma conta e confirmar que o contato recebe a prévia Firestore e baixa a mídia completa pelo Worker;
+8. excluir para todos e conferir que o arquivo é removido do canal privado;
+9. conferir a limpeza automática de anexos após a janela de aproximadamente 40 horas;
+10. testar notificações com app aberto, minimizado e processo encerrado.
 
 O repositório agora contém o código do Worker, mas o estado da implantação Cloudflare e dos secrets não pode ser inferido do Git. Não considerar Modo A operacional até publicar o Worker e passar os testes com duas contas e dois aparelhos.

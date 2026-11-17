@@ -12,7 +12,8 @@ Os códigos são armazenados com seis dígitos sem hífen (`123456`). A interfac
 - `textConversations/{room}`: membros e metadados da conversa.
 - `textConversations/{room}/messages/{messageId}`: texto, recibos e tombstones de exclusão.
 - `messageInbox/{uid}/items/{itemId}`: ponteiros para mensagens e convites.
-- `telegramMedia/{mediaId}`: referência privada ao arquivo armazenado no canal Telegram, participantes autorizados e data de expiração.
+- `telegramMedia/{mediaId}`: referência privada ao anexo de mensagem no canal Telegram, participantes autorizados e data de expiração.
+- `telegramProfiles/{uid}`: referência privada à mídia completa do perfil publicada no canal Telegram.
 
 ## Publicar regras
 
@@ -22,7 +23,7 @@ O repositório contém `firebase.json` e `.firebaserc`: execute `firebase login`
 
 O cliente resolve o UID pelo código, cria/atualiza o documento da sala, grava a mensagem e cria um item por destinatário em `messageInbox`. Em seguida chama o Worker FCM `/v1/push` para acordar o aparelho. O FCM é um aviso de sincronização; o conteúdo é recuperado do Firestore quando o HTML inicializa.
 
-A mídia passa pelo Worker `rdchat-fcm-gateway`: o arquivo é guardado no canal privado Telegram; metadados e ponteiros são escritos pelo Worker em `textConversations`, `telegramMedia` e `messageInbox`; em seguida o Worker dispara o FCM. O download exige Firebase ID token e valida que o UID está entre o remetente/destinatários. A exclusão para todos tenta remover a cópia do canal e publica o tombstone no Firestore.
+Anexos de conversa e mídia completa de perfil passam pelo Worker `rdchat-fcm-gateway`. Anexos são guardados no canal privado Telegram; metadados são escritos em `textConversations`, `telegramMedia` e `messageInbox`, com FCM enviado pelo Worker. Fotos/vídeos completos de perfil usam `telegramProfiles/{uid}` e uma prévia compacta em `contactCodes/{code}`. O download exige Firebase ID token e valida participantes ou contato autorizado. A exclusão de mensagem tenta remover a cópia do canal e publica tombstone no Firestore.
 
 ## TTL de sete dias
 

@@ -413,6 +413,164 @@ async function sendMediaWake(env, message) {
   return { sent, failures };
 }
 
+
+async function loadProfileRecord(env, uid) {
+  try {
+    return await firestoreRequest(env, '/telegramProfiles/' + encodeURIComponent(uid));
+  } catch (error) {
+    if (error instanceof HttpError && error.status === 404) return null;
+    throw error;
+  }
+}
+
+async function tryDeleteTelegramMessage(env, chatId, messageId) {
+  if (!chatId || !messageId) return false;
+  const cleanup = new FormData();
+  cleanup.append('chat_id', String(chatId));
+  cleanup.append('message_id', String(messageId));
+  try {
+    await telegramPost(env, 'deleteMessage', cleanup);
+    return true;
+  } catch (error) {
+    console.warn('RDCHAT_TELEGRAM_OLD_PROFILE_MEDIA_RETAINED', String(error.message || error));
+    return false;
+  }
+}
+
+async function handleProfileUpload(request, env) {
+  const bearer = (request.headers.get('Authorization') || '').match(/^Bearer\s+(.+)$/i);
+  const uid = await verifyFirebaseUser(bearer && bearer[1], env);
+  const form = await request.formData();
+  const avatarData = String(form.get('avatarData') || '');
+  const version = String(form.get('profileMediaVersion') || '').slice(0, 100);
+  const file = form.get('file');
+
+  if (avatarData && (avatarData.length > 60000 || !/^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(avatarData))) {
+    throw new HttpError(400, 'Prévia de perfil inválida ou maior que 60 KB.');
+  }
+  if (!version) throw new HttpError(400, 'Versão de mídia do perfil ausente.');
+  if (file && typeof file.arrayBuffer === 'function' && file.size > 20_000_000) {
+    throw new HttpError(413, 'A mídia de perfil precisa ter até 20 MB.');
+  }
+
+  const user = await firestoreRequest(env, '/users/' + encodeURIComponent(uid));
+  const userFields = user.fields || {};
+  const code = fieldString(userFields, 'code').replace(/[^0-9]/g, '');
+  if (!/^[0-9]{6}$/.test(code)) throw new HttpError(409, 'Código de contato do perfil não está cadastrado.');
+
+  const previous = await loadProfileRecord(env, uid);
+  let nextProfileRecord = null;
+  let sentTelegramMessage = null;
+  let mediaType = '';
+  let mediaName = '';
+
+  if (file && typeof file.arrayBuffer === 'function' && file.size > 0) {
+    mediaType = String(file.type || 'application/octet-stream').slice(0, 120);
+    mediaName = safeMediaName(file.name || 'perfil');
+    const telegramForm = new FormData();
+    telegramForm.append('chat_id', String(env.TELEGRAM_CHANNEL_ID));
+    telegramForm.append('document', file, mediaName);
+    telegramForm.append('protect_content', 'true');
+    sentTelegramMessage = await telegramPost(env, 'sendDocument', telegramForm);
+    const document = sentTelegramMessage && sentTelegramMessage.document;
+    const fileId = String(document && document.file_id || '');
+    const telegramMessageId = Number(sentTelegramMessage && sentTelegramMessage.message_id || 0);
+    if (!fileId || !telegramMessageId) throw new HttpError(502, 'Telegram não retornou os identificadores da mídia de perfil.');
+    nextProfileRecord = {
+      uid,
+      telegramFileId: fileId,
+      telegramChatId: String(env.TELEGRAM_CHANNEL_ID),
+      telegramMessageId,
+      mediaType,
+      mediaName,
+      profileMediaVersion: version,
+      updatedAt: new Date()
+    };
+  }
+
+  const profileFields = {
+    avatarData,
+    profileMediaVersion: version,
+    profileMediaType: mediaType,
+    profileMediaName: mediaName
+  };
+  try {
+    const profileWrites = [
+      { path: '/users/' + encodeURIComponent(uid), data: profileFields },
+      { path: '/contactCodes/' + encodeURIComponent(code), data: profileFields }
+    ];
+    if (nextProfileRecord) {
+      profileWrites.push({ path: '/telegramProfiles/' + encodeURIComponent(uid), data: nextProfileRecord });
+    }
+    await commitFirestoreDocuments(env, profileWrites);
+    if (!nextProfileRecord) {
+      try {
+        await firestoreRequest(env, '/telegramProfiles/' + encodeURIComponent(uid), { method: 'DELETE' });
+      } catch (error) {
+        if (!(error instanceof HttpError && error.status === 404)) {
+          console.warn('RDCHAT_PROFILE_POINTER_CLEANUP_FAILED', String(error.message || error));
+        }
+      }
+    }
+  } catch (error) {
+    if (sentTelegramMessage) {
+      const messageId = Number(sentTelegramMessage.message_id || 0);
+      await tryDeleteTelegramMessage(env, env.TELEGRAM_CHANNEL_ID, messageId);
+    }
+    throw error;
+  }
+
+  if (previous) {
+    await tryDeleteTelegramMessage(
+      env,
+      fieldString(previous.fields || {}, 'telegramChatId'),
+      fieldString(previous.fields || {}, 'telegramMessageId')
+    );
+  }
+  return { ok: true, profileMediaVersion: version, hasFullMedia: !!nextProfileRecord };
+}
+
+async function handleProfileDownload(request, env, profileUid) {
+  const bearer = (request.headers.get('Authorization') || '').match(/^Bearer\s+(.+)$/i);
+  const requesterUid = await verifyFirebaseUser(bearer && bearer[1], env);
+  if (!validDocId(profileUid)) throw new HttpError(400, 'UID de perfil inválido.');
+
+  if (requesterUid !== profileUid) {
+    try {
+      await firestoreRequest(env, '/users/' + encodeURIComponent(requesterUid) + '/contacts/' + encodeURIComponent(profileUid));
+    } catch (error) {
+      if (error instanceof HttpError && error.status === 404) throw new HttpError(403, 'Somente contatos adicionados podem baixar a mídia completa do perfil.');
+      throw error;
+    }
+  }
+
+  const record = await loadProfileRecord(env, profileUid);
+  if (!record) throw new HttpError(404, 'Este perfil não possui mídia completa publicada.');
+  const fields = record.fields || {};
+  const fileId = fieldString(fields, 'telegramFileId');
+  if (!fileId) throw new HttpError(404, 'Arquivo de perfil não localizado.');
+  const fileInfo = await telegramGetFile(env, fileId);
+  const fileUrl = 'https://api.telegram.org/file/bot' + String(env.TELEGRAM_BOT_TOKEN).trim() + '/' + fileInfo.file_path;
+  const fileResponse = await fetch(fileUrl);
+  if (!fileResponse.ok || !fileResponse.body) throw new HttpError(502, 'Não foi possível baixar a mídia de perfil do Telegram.');
+
+  const rawMime = fieldString(fields, 'mediaType') || 'application/octet-stream';
+  const mime = /^[a-z0-9.+-]+\/[a-z0-9.+-]+$/i.test(rawMime) ? rawMime : 'application/octet-stream';
+  const fileName = safeMediaName(fieldString(fields, 'mediaName') || 'perfil');
+  return new Response(fileResponse.body, {
+    status: 200,
+    headers: {
+      'content-type': mime,
+      'content-disposition': "attachment; filename*=UTF-8''" + encodeURIComponent(fileName),
+      'cache-control': 'private, no-store',
+      'x-content-type-options': 'nosniff',
+      'access-control-allow-origin': corsOrigin(request),
+      'access-control-allow-methods': ALLOW_METHODS,
+      'access-control-allow-headers': ALLOW_HEADERS
+    }
+  });
+}
+
 async function handleMediaUpload(request, env) {
   const bearer = (request.headers.get('Authorization') || '').match(/^Bearer\s+(.+)$/i);
   const senderUid = await verifyFirebaseUser(bearer && bearer[1], env);
@@ -716,6 +874,14 @@ export default {
       return responseJson({ ok: true, service: 'RdChat FCM + Telegram Media Gateway', project: env.FIREBASE_PROJECT_ID, mediaConfigured: !!(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHANNEL_ID), version: 2 }, 200, origin);
     }
     try {
+      if (request.method === 'POST' && url.pathname === '/v1/profile') {
+        const result = await handleProfileUpload(request, env);
+        return responseJson(result, 200, origin);
+      }
+      if (request.method === 'GET' && url.pathname.startsWith('/v1/profile/')) {
+        const profileUid = decodeURIComponent(url.pathname.slice('/v1/profile/'.length));
+        return await handleProfileDownload(request, env, profileUid);
+      }
       if (request.method === 'GET' && url.pathname.startsWith('/v1/media/')) {
         const mediaId = decodeURIComponent(url.pathname.slice('/v1/media/'.length));
         return await handleMediaDownload(request, env, mediaId);
