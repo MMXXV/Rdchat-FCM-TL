@@ -432,6 +432,9 @@ async function tryDeleteTelegramMessage(env, chatId, messageId) {
     await telegramPost(env, 'deleteMessage', cleanup);
     return true;
   } catch (error) {
+    const message = String(error.message || error).toLowerCase();
+    // Telegram retorna 400 quando a mensagem já foi removida. Trate como sucesso idempotente.
+    if (message.includes('message to delete not found') || message.includes('message not found')) return true;
     console.warn('RDCHAT_TELEGRAM_OLD_PROFILE_MEDIA_RETAINED', String(error.message || error));
     return false;
   }
@@ -781,10 +784,12 @@ async function handleMediaDelete(request, env, mediaId) {
   const fields = record.fields || {};
   if (uid !== fieldString(fields, 'fromUid')) throw new HttpError(403, 'Somente o autor pode remover esta mídia para todos.');
 
-  const cleanup = new FormData();
-  cleanup.append('chat_id', fieldString(fields, 'telegramChatId'));
-  cleanup.append('message_id', fieldString(fields, 'telegramMessageId'));
-  await telegramPost(env, 'deleteMessage', cleanup);
+  const deleted = await tryDeleteTelegramMessage(
+    env,
+    fieldString(fields, 'telegramChatId'),
+    fieldString(fields, 'telegramMessageId')
+  );
+  if (!deleted) throw new HttpError(502, 'Telegram não confirmou a exclusão do arquivo; o registro foi mantido para nova tentativa.');
   await firestoreRequest(env, '/telegramMedia/' + encodeURIComponent(mediaId), { method: 'DELETE' });
   return { ok: true, deleted: true };
 }
@@ -820,12 +825,10 @@ async function cleanupExpiredTelegramMedia(env) {
     if (!chatId || !messageId || markerIndex < 0) continue;
     const documentPath = document.name.slice(markerIndex + marker.length);
     try {
-      const cleanup = new FormData();
-      cleanup.append('chat_id', chatId);
-      cleanup.append('message_id', messageId);
-      await telegramPost(env, 'deleteMessage', cleanup);
+      const telegramDeleted = await tryDeleteTelegramMessage(env, chatId, messageId);
+      if (!telegramDeleted) continue;
 
-      // Depois de remover o arquivo no Telegram, apaga os metadados e os ponteiros remotos.
+      // Depois de remover (ou confirmar já removido) o arquivo no Telegram, apaga os metadados e os ponteiros remotos.
       const roomId = fieldString(fields, 'roomId');
       const messageIdField = fieldString(fields, 'messageId');
       const senderUid = fieldString(fields, 'fromUid');
