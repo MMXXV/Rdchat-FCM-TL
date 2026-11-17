@@ -199,14 +199,22 @@ android {
         buildConfig = true
     }
 
+    // Mantém o APK universal menor ao comprimir as bibliotecas .so.
+    // O Android as extrai na instalação, preservando o carregamento nativo.
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+
     // AGP 9.x compila Kotlin com o suporte Kotlin integrado; não aplicar kotlin-android.
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    // Gera um único APK com todas as bibliotecas nativas fornecidas pelas dependências.
-    // A TDLib embarcada fornece arm64-v8a e x86_64; o pacote universal leva ambas.
+    // Gera um único APK com todas as bibliotecas nativas entregues pelas dependências.
+    // A verificação no CI exige as quatro ABIs Android: ARM 32/64 e x86 32/64.
 
     buildTypes {
         debug { isMinifyEnabled = false }
