@@ -75,8 +75,8 @@ check("manifest_uses_resizable_keyboard", manifest.includes('android:windowSoftI
 check("gradle_uses_firebase_messaging", gradle.includes("libs.firebase.messaging"));
 check("gradle_uses_java_17", gradle.includes("JavaVersion.VERSION_17"));
 check("gradle_targets_sdk_37", gradle.includes("targetSdk = 37"));
-const jsBridgeMethods = new Set([...html.matchAll(/(?:window\\.AndroidBridge|AndroidBridge|B\\(\\))\\.([A-Za-z0-9_]+)\\s*\\(/g)].map((match) => match[1]));
-const nativeJavascriptMethods = new Set([...main.matchAll(/@JavascriptInterface\\s+fun\\s+([A-Za-z0-9_]+)\\s*\\(/g)].map((match) => match[1]));
+const jsBridgeMethods = new Set([...html.matchAll(/(?:window\.AndroidBridge|AndroidBridge|B\(\))\.([A-Za-z0-9_]+)\s*\(/g)].map((match) => match[1]));
+const nativeJavascriptMethods = new Set([...main.matchAll(/@JavascriptInterface\s+fun\s+([A-Za-z0-9_]+)\s*\(/g)].map((match) => match[1]));
 const missingNativeBridgeMethods = [...jsBridgeMethods].filter((method) => !nativeJavascriptMethods.has(method));
 check("native_bridge_has_camera_mic_method", nativeJavascriptMethods.has("requestCameraAndMicrophonePermissions") && html.includes("requestCameraAndMicrophonePermissions"));
 check("all_direct_javascript_bridge_calls_exist_natively", missingNativeBridgeMethods.length === 0, missingNativeBridgeMethods.join(", "));
