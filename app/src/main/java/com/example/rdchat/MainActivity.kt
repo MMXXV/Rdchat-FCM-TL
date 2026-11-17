@@ -307,7 +307,6 @@ class MainActivity : AppCompatActivity() {
                     super.onPageFinished(view, url)
                     if (isTrustedAppPage()) {
                         flushPendingNativeFcm()
-                        requestInitialPermissionsOnce()
                     }
                 }
             }
@@ -386,7 +385,7 @@ class MainActivity : AppCompatActivity() {
 
         CookieManager.getInstance().setAcceptCookie(true)
         CookieManager.getInstance()
-            .setAcceptThirdPartyCookies(webView, true)
+            .setAcceptThirdPartyCookies(webView, false)
 
         webView.addJavascriptInterface(
             object {
@@ -951,31 +950,6 @@ class MainActivity : AppCompatActivity() {
             request.deny()
         } catch (_: Exception) {
         }
-    }
-
-    private fun requestInitialPermissionsOnce() {
-
-        val preferences = getSharedPreferences(
-            "rdchat_runtime_permissions",
-            MODE_PRIVATE
-        )
-
-        if (preferences.getBoolean("initial_prompt_v1", false)) return
-
-        preferences.edit()
-            .putBoolean("initial_prompt_v1", true)
-            .apply()
-
-        val permissions = mutableListOf(
-            Manifest.permission.CAMERA,
-            Manifest.permission.RECORD_AUDIO
-        )
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            permissions.add(Manifest.permission.POST_NOTIFICATIONS)
-        }
-
-        requestRuntimePermissions(permissions)
     }
 
     private fun cameraPermissionsFor(type: String): List<String> {
