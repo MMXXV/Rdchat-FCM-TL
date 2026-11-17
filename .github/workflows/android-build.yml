@@ -36,14 +36,7 @@ jobs:
         env:
           TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
         run: |
-          if ! printf '%s' "$TELEGRAM_API_HASH" | grep -Eq '^[0-9a-fA-F]{32}      - name: Upload debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: rdchat-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-          retention-days: 7
-; then
+          if ! printf '%s' "$TELEGRAM_API_HASH" | grep -Eq '^[0-9a-fA-F]{32}$'; then
             echo "::error::Configure a valid 32-character TELEGRAM_API_HASH repository secret."
             exit 1
           fi
