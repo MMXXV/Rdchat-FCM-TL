@@ -23,23 +23,28 @@ for (let index = 0; index < scripts.length; index++) {
 }
 
 const has = (value) => html.includes(value);
-const phoneInfoStart = html.indexOf('id="rdTgPhoneInfo"');
-const phoneInfoEnd = html.indexOf("</button>", phoneInfoStart);
-const phoneInfoMarkup = phoneInfoStart >= 0 && phoneInfoEnd >= 0 ? html.slice(phoneInfoStart, phoneInfoEnd) : "";
+const phoneEyeStart = html.indexOf('id="rdTgPhoneEye"');
+const phoneEyeEnd = html.indexOf("</button>", phoneEyeStart);
+const phoneEyeMarkup = phoneEyeStart >= 0 && phoneEyeEnd >= 0 ? html.slice(phoneEyeStart, phoneEyeEnd) : "";
 const checks = {
   singlePrimaryButton: (html.match(/id=["']authSubmit["']/g) || []).length === 1,
   noSeparateTelegramButtons: !has('id="rdTgSend"') && !has('id="rdTgCodeBtn"') && !has('id="rdTgPassBtn"'),
   phoneFieldAfterPin: html.indexOf('id="regPass"') < html.indexOf('id="rdTgPhoneF"'),
   sameButtonConfirmsCode: has("submit.textContent='Confirmar código'"),
   sameButtonConfirmsTwoStepPassword: has("submit.textContent='Confirmar senha'"),
-  privacyInfoIcon: has('id="rdTgPhoneInfo"'),
-  privacyInfoUsesEye: phoneInfoMarkup.includes("M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z") && !phoneInfoMarkup.includes('M12 11v5'),
-  privacyInfoAutoHides: has('},4200);'),
+  phoneEyeButton: has('id="rdTgPhoneEye"'),
+  phoneEyeUsesEyeIcon: phoneEyeMarkup.includes("M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"),
+  phoneEyeTogglesInputType: has("input.type=showing?'tel':'password'"),
+  phoneEyeUpdatesAccessibility: has("this.setAttribute('aria-label',showing?'Ocultar número':'Mostrar número')"),
+  onboardingAsksCamera: has('<b>Câmera</b>'),
+  onboardingAsksMicrophone: has('<b>Microfone</b>'),
+  nativeBridgeRequestsCameraAndMicrophone: has('requestCameraAndMicrophonePermissions'),
+  firebaseErrorShowsCode: has("Firebase indisponível (' + reason + ')"),
   phoneModeHidesSecondarySwitch: has('#screen-login.rd-login-phone-mode #authModeSwitch{display:none!important}'),
   failedPhonePrivacyWarnsUser: has("if(!T.phoneHidden)tt('Atenção: o Telegram não confirmou todas as restrições do número."),
   phoneModeHasCleanSelector: has('#screen-login.rd-login-phone-mode .rd-modes{'),
   privacyIntroRemoved: !has('Leve a privacidade com você.') && !has('Seja você em cada mensagem.'),
-  privacyInfoExactText: has('Seu número fica oculto: ninguém vê nem encontra você por ele. O RdChat usa só o código de 6 dígitos.'),
+  oldPrivacyInfoRemoved: !has('id="rdTgPhoneInfo"') && !has('rdPhonePrivacyTip'),
   onboardingStartsAtAuthorize: has("    s2();\n  })};\n})();\n</script>\n\n<!-- RDCHAT_V106_ARQUITETURA -->")
 };
 for (const [name, ok] of Object.entries(checks)) {
