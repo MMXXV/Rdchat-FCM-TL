@@ -55,7 +55,7 @@ O HTML define política imutável `RDCHAT_ZERO_P2P=true`; Trystero não é carre
 - O usuário existente mantém o próprio username Telegram; um username técnico só é criado se não houver um.
 
 Ainda é necessário:
-- configurar um par válido `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` como GitHub Actions Secrets ou em `local.properties`;
+- configurar um `TELEGRAM_API_HASH` novo/rotacionado como GitHub Actions Secret ou `telegramApiHash` em `local.properties` (o `api_id` já está definido no projeto);
 - confirmar que as credenciais atuais não foram revogadas e, se expostas, criar um novo app em my.telegram.org;
 - executar login real em aparelho, confirmar envio do código, senha de duas etapas e retomada após reiniciar;
 - validar notificações e recebimento TDLib com o app encerrado; o serviço persistente/push receiver TDLib ainda não está integrado;

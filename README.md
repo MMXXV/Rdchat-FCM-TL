@@ -40,10 +40,10 @@ O código-fonte dos Workers não está neste repositório, portanto os endpoints
 
 O modo **Com número** usa TDLib JNI Android. A dependência está fixada a um commit imutável e inclui bibliotecas nativas para arm64-v8a, armeabi-v7a, x86 e x86_64.
 
-As credenciais Telegram não são versionadas. Para compilar com o modo numérico ativo, obtenha um par válido de `api_id` e `api_hash` em [my.telegram.org](https://my.telegram.org), preferencialmente de uma aplicação nova caso o par anterior tenha sido exposto.
+O `api_id` público já está configurado no projeto. O `api_hash` não é versionado: como o valor antigo apareceu exposto no histórico, use um hash rotacionado.
 
-- GitHub Actions: cadastre os segredos `TELEGRAM_API_ID` e `TELEGRAM_API_HASH` em Settings → Secrets and variables → Actions.
-- Build local: adicione `telegramApiId=...` e `telegramApiHash=...` ao arquivo local `local.properties` (já ignorado pelo Git).
+- GitHub Actions: cadastre somente `TELEGRAM_API_HASH` em Settings → Secrets and variables → Actions.
+- Build local: adicione `telegramApiHash=...` ao arquivo local `local.properties` (já ignorado pelo Git).
 
 Sem essas duas configurações, o APK continua compilando, mas o login por número informa que falta configurar a integração. Não envie credenciais por commit nem em logs.
 

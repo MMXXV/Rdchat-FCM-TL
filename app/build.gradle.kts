@@ -10,14 +10,17 @@ val telegramProperties = Properties().apply {
     if (file.isFile) file.inputStream().use { load(it) }
 }
 
-val telegramApiIdText = providers.environmentVariable("TELEGRAM_API_ID")
-    .orElse(providers.gradleProperty("telegramApiId"))
-    .orElse(telegramProperties.getProperty("telegramApiId").orEmpty())
-    .get()
-val telegramApiHash = providers.environmentVariable("TELEGRAM_API_HASH")
-    .orElse(providers.gradleProperty("telegramApiHash"))
-    .orElse(telegramProperties.getProperty("telegramApiHash").orEmpty())
-    .get()
+val telegramApiIdText =
+    providers.environmentVariable("TELEGRAM_API_ID").orNull?.takeIf { it.isNotBlank() }
+        ?: providers.gradleProperty("telegramApiId").orNull?.takeIf { it.isNotBlank() }
+        ?: telegramProperties.getProperty("telegramApiId")?.takeIf { it.isNotBlank() }
+        ?: "34968764" // api_id já usado pelo projeto; não é segredo.
+
+val telegramApiHash =
+    providers.environmentVariable("TELEGRAM_API_HASH").orNull?.takeIf { it.isNotBlank() }
+        ?: providers.gradleProperty("telegramApiHash").orNull?.takeIf { it.isNotBlank() }
+        ?: telegramProperties.getProperty("telegramApiHash")?.takeIf { it.isNotBlank() }
+        ?: ""
 val telegramApiId = telegramApiIdText.toIntOrNull() ?: 0
 val escapedTelegramApiHash = telegramApiHash.replace("\\", "\\\\").replace("\"", "\\\"")
 
