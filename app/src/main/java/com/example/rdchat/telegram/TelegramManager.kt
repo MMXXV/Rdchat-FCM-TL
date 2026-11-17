@@ -461,7 +461,8 @@ class TelegramManager(
                 }
                 TdApi.InputMessageVideo().apply { this.video = video; this.caption = caption }
             }
-            kind == "audio" || normalizedMime.startsWith("audio/") -> {
+            (kind == "audio" || normalizedMime.startsWith("audio/")) &&
+                normalizedMime.substringBefore(';') in setOf("audio/mpeg", "audio/mp4", "audio/aac", "audio/x-m4a") -> {
                 val audio = TdApi.InputAudio().apply {
                     this.audio = inputFile
                     title = file.name.take(64)
