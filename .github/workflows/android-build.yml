@@ -32,6 +32,21 @@ jobs:
         run: echo "497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7  gradle/wrapper/gradle-wrapper.jar" | sha256sum --check
       - name: Gradle Wrapper
         uses: gradle/actions/setup-gradle@v4
+      - name: Verify Telegram API hash secret
+        env:
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+        run: |
+          if ! printf '%s' "$TELEGRAM_API_HASH" | grep -Eq '^[0-9a-fA-F]{32}      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rdchat-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+; then
+            echo "::error::Configure a valid 32-character TELEGRAM_API_HASH repository secret."
+            exit 1
+          fi
       - name: Compile and unit tests
         env:
           TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
