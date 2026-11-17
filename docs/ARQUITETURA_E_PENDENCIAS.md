@@ -9,8 +9,9 @@
 - Métodos de revisão de mídia respondem negando (fail-closed) enquanto não houver motor real; não aprovam mídia sem análise.
 - Navegação de primeiro plano fora de `/assets/` abre no app externo; pop-ups automáticos desativados.
 - Removidas permissões de LAN/Wi-Fi multicast, já que o transporte P2P foi desativado.
+- Câmera/microfone deixaram de ser solicitados automaticamente ao abrir a página; serão pedidos no contexto de uso. Backup Android e cookies de terceiros foram desativados.
 - FileProvider restrito a `cache/midia_privada/`.
-- Gradle version catalog, JDK 17 e versões alinhadas a AGP 9.2.0 / Gradle 9.4.1 / API 37.
+- Gradle version catalog, JDK 17 e versões alinhadas a AGP 9.5.1 / Gradle 9.6.0 / API 37.
 - Regras Firestore atualizadas para IDs de contato de seis dígitos, documento pai de sala, membros autorizados e inbox com `toUid` correspondente ao UID no caminho.
 - Mensagens, ponteiros, convites e tombstones recebem `expiresAt` (sete dias).
 - O HTML fixa `RDCHAT_ZERO_P2P=true` e bloqueia criação de RTCPeerConnection.

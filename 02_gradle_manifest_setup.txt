@@ -2,13 +2,13 @@ RDCHAT — CONFIGURAÇÃO ATUAL
 
 Abra a pasta raiz deste repositório no Android Studio como projeto Gradle existente.
 Requisitos alinhados: JDK 17, Android SDK Platform 37, Build Tools 36.0.0,
-Android Gradle Plugin 9.2.0 e Gradle 9.4.1.
+Android Gradle Plugin 9.5.1 e Gradle 9.6.0.
 
 No PowerShell:
   .\gradlew.bat :app:assembleDebug
 
 gradlew/gradlew.bat deste repositório são launchers bootstrap próprios: baixam
-Gradle 9.4.1 da distribuição oficial e validam SHA-256. Não contêm gradle-wrapper.jar.
+Gradle 9.6.0 da distribuição oficial e validam SHA-256. Não contêm gradle-wrapper.jar.
 
 Código Android ativo:
   app/src/main/java/com/example/rdchat/

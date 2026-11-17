@@ -4,11 +4,11 @@ O projeto Android já existe no repositório. Abra a pasta raiz no Android Studi
 
 ## Ambiente
 
-- Android Studio compatível com Android Gradle Plugin 9.2.0.
+- Android Studio compatível com Android Gradle Plugin 9.5.1.
 - JDK 17.
 - Android SDK Platform 37.
 - Android SDK Build Tools 36.0.0.
-- Gradle 9.4.1.
+- Gradle 9.6.0.
 
 No Windows/PowerShell:
 
@@ -16,7 +16,7 @@ No Windows/PowerShell:
 .\gradlew.bat :app:assembleDebug
 ```
 
-Os arquivos `gradlew` e `gradlew.bat` são launchers bootstrap deste repositório: baixam o Gradle oficial 9.4.1 para o cache local e verificam SHA-256 antes de extrair. Não são o Wrapper JAR oficial. O arquivo `gradle/wrapper/gradle-wrapper.properties` registra a mesma distribuição para futura migração ao wrapper padrão (`gradle wrapper --gradle-version 9.4.1`).
+Este repositório inclui os scripts e o JAR oficiais do Gradle Wrapper 9.6.0. A distribuição é fixada por versão e protegida pela propriedade `distributionSha256Sum` com o SHA-256 oficial publicado pelo Gradle.
 
 ## Estrutura ativa
 
