@@ -1,4 +1,4 @@
-package com.rdchat.app
+package com.example.rdchat.telegram
 
 import android.content.Context
 import android.util.Base64
@@ -11,7 +11,7 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.random.Random
 
 /** TDLib embutida. Nunca chama ImportContacts. Número oculto logo após o login. */
-class TelegramManager(private val ctx: Context, private val cb: Callbacks) {
+class TelegramManager(private val ctx: Context, private val cb: Callbacks, private val apiHash: String) {
 
     interface Callbacks {
         fun onAuthState(state: String)
@@ -24,7 +24,7 @@ class TelegramManager(private val ctx: Context, private val cb: Callbacks) {
 
     companion object {
         const val API_ID = 34968764
-        const val API_HASH = "370c47a9bc1707612c57cda09009fecf"
+
         private const val TAG = "RdTdlib"
         private const val MAX_DATAURL_BYTES = 25L * 1024 * 1024
     }
@@ -60,7 +60,7 @@ class TelegramManager(private val ctx: Context, private val cb: Callbacks) {
                 p.filesDirectory = File(ctx.filesDir, "tdlib_files").absolutePath   // privado: fora da galeria
                 p.useFileDatabase = true; p.useChatInfoDatabase = true; p.useMessageDatabase = true
                 p.useSecretChats = false
-                p.apiId = API_ID; p.apiHash = API_HASH
+                p.apiId = API_ID; p.apiHash = apiHash
                 p.systemLanguageCode = "pt-BR"; p.deviceModel = android.os.Build.MODEL
                 p.systemVersion = android.os.Build.VERSION.RELEASE; p.applicationVersion = "1.0.6"
                 send(p)

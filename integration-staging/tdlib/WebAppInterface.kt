@@ -1,4 +1,4 @@
-package com.rdchat.app
+package com.example.rdchat.telegram
 
 import android.content.Context
 import android.util.Base64
@@ -9,9 +9,9 @@ import org.json.JSONObject
 import java.io.File
 
 /** Ponte HTML <-> Android. addJavascriptInterface(WebAppInterface(...), "AndroidBridge") */
-class WebAppInterface(private val ctx: Context, private val web: WebView) : TelegramManager.Callbacks {
+class WebAppInterface(private val ctx: Context, private val web: WebView, apiHash: String) : TelegramManager.Callbacks {
 
-    private val tg = TelegramManager(ctx, this)
+    private val tg = TelegramManager(ctx, this, apiHash)
     private fun js(code: String) = web.post { web.evaluateJavascript(code, null) }
     private fun q(s: String?) = JSONObject.quote(s ?: "")
 
