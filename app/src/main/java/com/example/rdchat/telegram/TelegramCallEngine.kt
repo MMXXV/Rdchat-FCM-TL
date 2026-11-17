@@ -37,6 +37,7 @@ internal class TelegramCallEngine(
     private val closed = AtomicBoolean(false)
     private val nativeClass = Class.forName("io.github.pytgcalls.NTgCalls")
     private val native: Any = nativeClass.getDeclaredConstructor().newInstance()
+    @Volatile private var foregroundServiceStarted = false
 
     init { installNativeCallbacks() }
 
@@ -62,6 +63,7 @@ internal class TelegramCallEngine(
                 val active = ActiveCall(id, privateType.userId, video, true, clean)
                 callsById[id] = active
                 callsByUser[privateType.userId] = active
+                startForegroundCall(active)
                 emit("outgoing", active)
             }
         }
@@ -73,6 +75,7 @@ internal class TelegramCallEngine(
             emit("error", message = "A chamada recebida não está mais disponível.")
             return
         }
+        startForegroundCall(active)
         sendTd(TdApi.AcceptCall(callId, localTdProtocol())) { result ->
             if (result is TdApi.Error) emit("error", active, result.message)
         }
@@ -158,6 +161,24 @@ internal class TelegramCallEngine(
         callsById.clear()
         callsByUser.clear()
         frameTimes.clear()
+        stopForegroundCall()
+    }
+
+    private fun startForegroundCall(active: ActiveCall) {
+        try {
+            TelegramCallForegroundService.start(appContext, active.isVideo)
+            foregroundServiceStarted = true
+        } catch (error: Throwable) {
+            Log.e(TAG, "Não foi possível manter a chamada em primeiro plano.", error)
+            emit("error", active, error.message ?: "O Android não permitiu iniciar o serviço de chamada.")
+        }
+    }
+
+    private fun stopForegroundCall() {
+        if (!foregroundServiceStarted) return
+        try { TelegramCallForegroundService.stop(appContext) }
+        catch (error: Throwable) { Log.w(TAG, "Falha ao finalizar o serviço de chamada.", error) }
+        foregroundServiceStarted = false
     }
 
     private fun localTdProtocol(): TdApi.CallProtocol {
@@ -172,6 +193,7 @@ internal class TelegramCallEngine(
     }
 
     private fun connectNative(active: ActiveCall, state: TdApi.CallStateReady) {
+        startForegroundCall(active)
         invokeNative("createP2pCall", active.userId)
         setMediaSources(active, includeVideo = active.isVideo)
         invokeNative("skipExchange", active.userId, state.encryptionKey, active.isOutgoing)
@@ -315,6 +337,7 @@ internal class TelegramCallEngine(
     private fun stopNative(userId: Long) {
         try { invokeNative("stop", userId) }
         catch (error: Throwable) { Log.w(TAG, "Falha ao fechar mídia nativa.", error) }
+        stopForegroundCall()
     }
 
     private fun firstMetadata(container: Any, name: String): String {
