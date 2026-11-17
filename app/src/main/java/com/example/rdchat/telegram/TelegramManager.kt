@@ -46,6 +46,22 @@ class TelegramManager(
 
         @Volatile private var nativeLibrariesLoaded = false
         private val nativeLibrariesLock = Any()
+
+        /**
+         * RdChat usa números brasileiros no formulário. Aceita DDD + telefone (10/11 dígitos)
+         * e, por compatibilidade com versões anteriores, também aceita o DDI 55 já informado.
+         * O prefixo +55 é sempre aplicado aqui, antes de enviar ao TDLib.
+         */
+        internal fun normalizeBrazilianPhone(input: String): String? {
+            val digits = input.filter(Char::isDigit)
+            val national = if (digits.startsWith("55") && digits.length in 12..13) {
+                digits.drop(2)
+            } else {
+                digits
+            }
+            if (!Regex("^[1-9][1-9][0-9]{8,9}$").matches(national)) return null
+            return "+55$national"
+        }
     }
 
     private val ctx = context.applicationContext
@@ -80,7 +96,10 @@ class TelegramManager(
         apiId > 0 && Regex("^[0-9a-fA-F]{32}$").matches(apiHash.trim())
 
     fun start(): Boolean {
-        if (!configured()) return false
+        if (!configured()) {
+            cb.onError("Integração Telegram não configurada neste APK. Verifique TELEGRAM_API_ID e TELEGRAM_API_HASH no build.")
+            return false
+        }
         if (client != null) return true
 
         synchronized(initializationLock) {
@@ -211,12 +230,12 @@ class TelegramManager(
 
     fun iniciarLogin(phone: String) {
         if (!configured()) {
-            cb.onError("Login com número ainda não configurado. Configure TELEGRAM_API_ID e TELEGRAM_API_HASH no build do APK.")
+            cb.onError("Integração Telegram não configurada neste APK. Verifique TELEGRAM_API_ID e TELEGRAM_API_HASH no build.")
             return
         }
-        val normalized = phone.trim().filter { it.isDigit() || it == '+' }
-        if (!Regex("^\\+[1-9][0-9]{7,14}$").matches(normalized)) {
-            cb.onError("Digite o número no formato internacional, incluindo o DDI. Exemplo: +55 11 99999-9999.")
+        val normalized = normalizeBrazilianPhone(phone)
+        if (normalized == null) {
+            cb.onError("Digite DDD + número brasileiro com 10 ou 11 dígitos. O +55 é adicionado automaticamente.")
             return
         }
         loginFinalized.set(false)
