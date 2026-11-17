@@ -1,6 +1,7 @@
 package com.example.rdchat.telegram
 
 import android.content.Context
+import android.media.MediaMetadataRetriever
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
@@ -438,6 +439,19 @@ class TelegramManager(
         }
     }
 
+    private fun audioDurationSeconds(file: File): Int {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(file.absolutePath)
+            val millis = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+            (millis / 1000L).coerceAtLeast(1L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+        } catch (_: Exception) {
+            1
+        } finally {
+            try { retriever.release() } catch (_: Exception) { }
+        }
+    }
+
     private fun inputMessageFor(envelope: String, mime: String, file: File?): TdApi.InputMessageContent {
         val caption = TdApi.FormattedText(envelope, emptyArray())
         if (file == null) return TdApi.InputMessageText().apply { text = caption }
@@ -460,6 +474,16 @@ class TelegramManager(
                     supportsStreaming = true
                 }
                 TdApi.InputMessageVideo().apply { this.video = video; this.caption = caption }
+            }
+            (kind == "audio" || normalizedMime.startsWith("audio/")) &&
+                normalizedMime.substringBefore(';') in setOf("audio/ogg", "audio/opus") -> {
+                TdApi.InputMessageVoiceNote().apply {
+                    voiceNote = inputFile
+                    duration = audioDurationSeconds(file)
+                    waveform = byteArrayOf()
+                    this.caption = caption
+                    selfDestructType = null
+                }
             }
             (kind == "audio" || normalizedMime.startsWith("audio/")) &&
                 normalizedMime.substringBefore(';') in setOf("audio/mpeg", "audio/mp4", "audio/aac", "audio/x-m4a") -> {
