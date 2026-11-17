@@ -1,32 +1,25 @@
-RDCHAT V1.0.6 – CONFIGURAÇÃO ANDROID
-====================================
-build.gradle.kts (app)
-  plugins { id("com.google.gms.google-services") }
-  dependencies {
-      implementation(platform("com.google.firebase:firebase-bom:33.5.1"))
-      implementation("com.google.firebase:firebase-messaging-ktx")
-      implementation("androidx.core:core-ktx:1.13.1")
-      implementation(files("libs/tdlib.aar"))   // TDLib compilada p/ Android (td/example/android do repositório oficial)
-  }
-  // TelegramManager.API_ID / API_HASH: já preenchidos (credenciais do my.telegram.org)
+RDCHAT — CONFIGURAÇÃO ATUAL
 
-AndroidManifest.xml
-  <uses-permission android:name="android.permission.INTERNET"/>
-  <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-  <uses-permission android:name="android.permission.RECORD_AUDIO"/>
-  <uses-permission android:name="android.permission.CAMERA"/>
-  <!-- NÃO declare READ_CONTACTS (a agenda nunca é lida) -->
-  <application android:name=".RdApp" ...>
-      <service android:name=".RdFirebaseMessagingService" android:exported="false">
-          <intent-filter><action android:name="com.google.firebase.MESSAGING_EVENT"/></intent-filter>
-      </service>
-  </application>
+Abra a pasta raiz deste repositório no Android Studio como projeto Gradle existente.
+Requisitos alinhados: JDK 17, Android SDK Platform 37, Build Tools 36.0.0,
+Android Gradle Plugin 9.2.0 e Gradle 9.4.1.
 
-Servidor de push (Worker/Cloud Function) – payload FCM:
-  { "message": { "token": "<fcmToken>",
-      "data": { "type":"msg", "id":"...", "room":"...", "fromName":"Ana", "preview":"oi" },
-      "android": { "priority": "HIGH" } } }          // SEM o campo "notification"
-  Para acordar a TDLib de um destinatário COM_NUMERO: data.type = "tdlib_wake".
+No PowerShell:
+  .\gradlew.bat :app:assembleDebug
 
-Proguard/R8: -keep class org.drinkless.tdlib.** { *; }  e  -keep class com.rdchat.app.WebAppInterface { *; }
-Firestore: publique o arquivo firestore.rules (firebase deploy --only firestore:rules).
+gradlew/gradlew.bat deste repositório são launchers bootstrap próprios: baixam
+Gradle 9.4.1 da distribuição oficial e validam SHA-256. Não contêm gradle-wrapper.jar.
+
+Código Android ativo:
+  app/src/main/java/com/example/rdchat/
+HTML ativo:
+  app/src/main/assets/index.html
+Firebase:
+  app/google-services.json
+Regras:
+  firestore.rules
+
+Integração TDLib está isolada em integration-staging/tdlib e ainda não entra no APK.
+O Apps Script NIP-17 está em integration-staging/google-apps-script-nip17 e não
+substitui os Workers /v1/push e /v1/delivered.
+Leia README.md e docs/ARQUITETURA_E_PENDENCIAS.md antes de configurar o ambiente.

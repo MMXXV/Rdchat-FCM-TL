@@ -42,7 +42,7 @@ A fila local do FCM é SharedPreferences com até 50 eventos de wake, não um ba
 
 ## P2P e chamadas
 
-O HTML define política imutável `RDCHAT_ZERO_P2P=true`; Trystero não é carregado e `makePC` lança erro antes da criação da PeerConnection. O código legado de chamada/sinalização ainda está no HTML, logo a interface/fluxo de chamadas precisa ser removido ou substituído por um serviço de chamada mediado que não use WebRTC/P2P. A versão atual deve ser tratada como sem chamadas.
+O HTML define política imutável `RDCHAT_ZERO_P2P=true`; Trystero não é carregado e `makePC` lança erro antes da criação da PeerConnection. A chamada de saída agora falha antes de pedir microfone/câmera, a sinalização de chamada não é mais enviada e sinais antigos são descartados. Os elementos visuais de chamadas ainda existem; a versão atual deve ser tratada como sem chamadas até integrar um serviço compatível com a arquitetura desejada.
 
 ## TDLib — não ativada
 

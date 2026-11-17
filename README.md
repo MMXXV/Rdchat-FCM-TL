@@ -32,7 +32,7 @@ Os arquivos `gradlew` e `gradlew.bat` são launchers bootstrap deste repositóri
 - Wake/push: Worker FCM `rdchat-fcm-gateway.edersonrgames.workers.dev`, endpoint esperado `POST /v1/push`.
 - Confirmação de wake: o serviço Android chama `POST /v1/delivered`.
 - Anexos: Worker `rdchat.edersonrgames.workers.dev`, endpoints `/v1/media`.
-- P2P/Trystero/WebRTC foram bloqueados no HTML. O código antigo de chamadas ainda existe, mas a criação de PeerConnection está bloqueada.
+- P2P/Trystero/WebRTC foram bloqueados no HTML. Chamadas de saída e sinais de chamada recebidos são bloqueados; os botões visuais ainda podem aparecer, mas não iniciam captura de áudio/vídeo.
 
 O código-fonte dos Workers não está neste repositório, portanto os endpoints remotos não foram alterados nem testados.
 

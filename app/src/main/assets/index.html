@@ -10541,7 +10541,7 @@ window.openAvatarPicker = openAvatarPicker;
   };
 
   async function initP2P() {
-    if (window.RDCHAT_ZERO_P2P !== false) { try { setP2PStatus('online', 'Texto: Firebase · Mídias: Telegram'); } catch (_) {} return false; }
+    if (window.RDCHAT_ZERO_P2P !== false) { try { setP2PStatus('online', 'Texto: Firebase · Mídias: relay HTTPS'); } catch (_) {} return false; }
     setP2PStatus('connecting', 'Conectando aos serviços do RdChat…');
     if (!me) return false;
     if (window.RdChatFirebase && !window.RdChatFirebase.ready) { try { await window.RdChatFirebase.initialize(); } catch (error) { console.warn('Firebase ainda não inicializado.', error); } }
@@ -11569,6 +11569,7 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
     return publishProfilePhoto(photo, revision);
   }
   async function sendCallSignal(email, signal) {
+    if (window.RDCHAT_ZERO_P2P === true) throw new Error('Chamadas estão desativadas nesta versão do RdChat.');
     if (!initialized) await initializeFirebase();
     email = norm(email);
     if (!email || email === norm(me && me.email) || !signal || signal.t !== 'rdcall') throw new Error('Sinal de chamada inválido.');
@@ -11780,17 +11781,6 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
       if (item.toUid === currentUid && inviteAge >= -30000 && Array.isArray(item.gm) && item.gm.includes(norm(me && me.email)) && item.gm.includes(norm(item.fromEmail))) {
         const receive = window.RdChatReceiveGroup;
         if (typeof receive === 'function') {
-          try { await receive(norm(item.fromEmail), { t:'grp', gid:String(item.gid || ''), gname:item.groupName, gm:item.gm, memberUids:item.memberUids || {}, memberNames:item.memberNames || {}, createdAt:item.createdAt, firebaseRoomId:item.firebaseRoomId, fromUid:item.fromUid }); }
-          catch (error) { console.warn('RdChat: falha ao receber convite de grupo.', error); }
-        }
-      }
-      return;
-    }
-    if (item.groupInvite === true) {
-      const inviteAge = Date.now() - Number(item.ts || 0);
-      if (item.toUid === currentUid && inviteAge >= -30000 && Array.isArray(item.gm) && item.gm.includes(norm(me && me.email)) && item.gm.includes(norm(item.fromEmail))) {
-        const receive = window.RdChatReceiveGroup;
-        if (typeof receive === 'function') {
           try { await receive(norm(item.fromEmail), { t:'grp', gid:String(item.gid || ''), gname:item.groupName, gm:item.gm, memberUids:item.memberUids || {}, memberNames:item.memberNames || {}, createdAt:item.createdAt, firebaseRoomId:item.firebaseRoomId, fromUid:item.fromUid, membershipUpdatedAt:item.ts }); }
           catch (error) { console.warn('RdChat: falha ao receber convite de grupo.', error); }
         }
@@ -11798,16 +11788,7 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
       return;
     }
     if (item.callSignal) {
-      const age = Date.now() - Number(item.ts || 0);
-      if (item.toUid === currentUid && age >= -30000 && age <= 90000) {
-        if (typeof window.RdChatReceiveCallSignal === 'function') {
-          try { window.RdChatReceiveCallSignal(norm(item.fromEmail), item.callSignal); }
-          catch (error) { console.warn('RdChat: falha ao receber sinal de chamada.', error); }
-        } else {
-          window.RdChatPendingCallSignals = window.RdChatPendingCallSignals || [];
-          window.RdChatPendingCallSignals.push({ email: norm(item.fromEmail), signal: item.callSignal, ts: Number(item.ts) || Date.now() });
-        }
-      }
+      // Esta versão não oferece chamadas. Apenas descarta a sinalização legada.
       if (item._docId) acknowledgeCallSignal(item._docId).catch(() => {});
       return;
     }
@@ -14379,6 +14360,7 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
   /* ============ Fluxo: iniciar, receber, aceitar, recusar, encerrar ============ */
   function validCid(c){ return typeof c==='string'&&c.length>=4&&c.length<=40&&/^[a-z0-9]+$/i.test(c); }
   window.rdCallStart=async function(key,video){
+    if (window.RDCHAT_ZERO_P2P === true) { say('Chamadas ainda não estão disponíveis nesta versão do RdChat.'); return; }
     if(me && !(window.rdHasBirthDate && window.rdHasBirthDate())) { if(window.rdRequireBirthDate) window.rdRequireBirthDate('Chamadas'); return; }
     if(S){ maximize(); return; }
     if(typeof RTCPeerConnection==='undefined'){ say('Este navegador não suporta chamadas.'); return; }
@@ -14392,6 +14374,7 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
     startRing(true);
   };
   async function acceptIncoming(){
+    if (window.RDCHAT_ZERO_P2P === true) return;
     var inc=incoming; if(!inc) return;
     if(me && !(window.rdHasBirthDate && window.rdHasBirthDate())) { stopRing(); hideIncoming(); if(typeof sig==='function') sig(inc.from,'reject',{cid:inc.cid}); incoming=null; if(window.rdRequireBirthDate) window.rdRequireBirthDate('Atendimento de chamadas'); return; }
     stopRing(); hideIncoming();

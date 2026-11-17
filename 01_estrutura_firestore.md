@@ -1,92 +1,45 @@
-# RdChat – Estrutura do Firestore (arquitetura V1.0.6)
+# Estrutura Firestore do RdChat
 
-Premissas: zero P2P/WebRTC · histórico 100% local · nuvem = fila temporária de transporte.
-Código de contato: 6 dígitos no formato `123-456` (único). O telefone NUNCA é gravado no Firestore.
+Os códigos são armazenados com seis dígitos sem hífen (`123456`). A interface pode formatar como `123-456`, mas o ID do documento e o campo `code` são normalizados.
 
-## Coleções
+## Coleções em uso
 
-### `users/{uid}`  (PRIVADO – só o dono lê/escreve)
-```json
-{
-  "uid": "firebaseUid",
-  "email": "usuario@rdchat.local",
-  "displayName": "Binho",
-  "code": "123-456",
-  "accountType": "SEM_NUMERO | COM_NUMERO",
-  "tgUserId": "",                 // só COM_NUMERO: id interno do Telegram (oculto na interface)
-  "tgUsername": "",               // só COM_NUMERO: usuário técnico automático, ex.: rdc_483920_ab12
-  "fcmToken": "token principal",
-  "fcmUpdatedAt": 1763300000000,
-  "is_adult": true,
-  "updatedAt": 1763300000000
-}
-```
-Subcoleções: `users/{uid}/fcmTokens/{sha256(token)}` `{token, platform:"android", updatedAt}` (multiaparelho) e `users/{uid}/contacts/{uid}`.
+- `users/{uid}`: perfil privado.
+- `users/{uid}/fcmTokens/{tokenHash}`: tokens de cada dispositivo, privados ao dono.
+- `users/{uid}/contacts/{contactUid}`: vínculos privados.
+- `contactCodes/{123456}`: diretório de consulta exata, sem listagem pública e sem tokens FCM.
+- `presence/{uid}`: estado de presença.
+- `textConversations/{room}`: membros e metadados da conversa.
+- `textConversations/{room}/messages/{messageId}`: texto, recibos e tombstones de exclusão.
+- `messageInbox/{uid}/items/{itemId}`: ponteiros para mensagens e convites.
 
-### `contactCodes/{123-456}`  (PÚBLICO p/ busca por código – só `get`, sem listagem)
-Somente o que a busca precisa. Nada sensível.
-```json
-{
-  "uid": "firebaseUid",
-  "email": "usuario@rdchat.local",
-  "name": "Binho",                  // Nome
-  "code": "123-456",
-  "accountType": "COM_NUMERO",      // Tipo de conta
-  "tgUsername": "rdc_123456_ab12",  // usado só pela rota TDLib (veja nota abaixo)
-  "fcmToken": "…",                  // Token FCM (conforme pedido; ver nota de segurança)
-  "avatarData": "",
-  "is_adult": true,
-  "updatedAt": 1763300000000
-}
+## Envio
+
+O cliente resolve o UID pelo código, cria/atualiza o documento da sala, grava a mensagem e cria um item por destinatário em `messageInbox`. Em seguida chama o Worker FCM `/v1/push` para acordar o aparelho. O FCM é um aviso de sincronização; o conteúdo é recuperado do Firestore quando o HTML inicializa.
+
+A exclusão para todos também grava um tombstone na sala e um ponteiro de inbox. A mídia depende do Worker HTTP de relay e precisa ser validada separadamente.
+
+## TTL de sete dias
+
+O HTML escreve `expiresAt` (Firestore Timestamp) nos documentos de mensagem, inbox, convites de grupo e exclusões. **A gravação do campo não ativa a exclusão automática.** No Firebase Console/Google Cloud Console, abra Firestore → Time-to-live → Create Policy e crie:
+- Collection group: `messages`; campo: `expiresAt`.
+- Collection group: `items`; campo: `expiresAt`.
+
+Alternativa via Google Cloud CLI, no projeto `rdchat-firebasev1`:
+
+```powershell
+gcloud config set project rdchat-firebasev1
+gcloud firestore fields ttls update expiresAt --collection-group=messages --enable-ttl
+gcloud firestore fields ttls update expiresAt --collection-group=items --enable-ttl
+gcloud firestore fields ttls list
 ```
 
-### `presence/{uid}`
-`{ uid, online:true, away:false, ts, awayAt }` – leitura para logados, escrita só do dono.
+A ativação pode levar dez minutos ou mais e documentos expirados normalmente são removidos em até 24 horas, não no instante exato. As exclusões por TTL são operações de delete e devem ser consideradas no consumo/limites do Firestore. Consulte a documentação oficial de TTL antes de ativar em produção.
 
-### `textConversations/{room}/messages/{messageId}`  (fila temporária – Cenário 1)
-```json
-{
-  "id": "msgId", "roomId": "room", "kind": "text|image|video|audio|gif|file|deleted",
-  "fromUid": "…", "fromEmail": "…", "fromName": "…", "fromCode": "123-456",
-  "toUids": ["…"], "toEmails": ["…"],
-  "text": "texto cifrado/ou claro",
-  "telegramMediaId": "file_id do Bot Gateway (mídias ≤ 20 MB)",
-  "mediaName": "foto.jpg", "mediaMime": "image/jpeg", "mediaSize": 123456,
-  "viewOnce": true, "caption": "legenda",
-  "groupKey": "", "groupName": "", "participantEmails": [],
-  "deliveredBy": [], "readBy": [], "ts": 1763300000000
-}
-```
-O destinatário grava no IndexedDB e **apaga** o documento (regra permite `delete` pelo destinatário).
+## Segurança
 
-### `messageInbox/{uid}/items/{messageId_uid}`
-Ponteiro por destinatário (aciona sincronização). Dono lê/apaga; o remetente cria.
+As regras atualizadas fazem busca exata de seis dígitos, bloqueiam listagem de `contactCodes`, restringem tokens FCM à conta dona, verificam membros da sala e exigem que `toUid` corresponda ao UID no caminho de inbox.
 
-## Rotas de envio (decididas no JS por `RdChatRouter`/`enviarMensagem()`)
-| Remetente | Destinatário(s) | Rota |
-|---|---|---|
-| SEM_NUMERO | qualquer | Cenário 1: texto → Firestore + FCM · mídia ≤ 20 MB → Bot Gateway |
-| qualquer | SEM_NUMERO (ou algum SEM_NUMERO no grupo) | Cenário 1 |
-| COM_NUMERO | todos COM_NUMERO | Cenário 2: `AndroidBridge.enviarViaTelegram` (TDLib, até 2 GB) |
-Se a rota TDLib falhar, o JS cai automaticamente no Cenário 1 (limite de 20 MB para mídia).
+Firestore Rules não aplicam rate limit. Um código de seis dígitos ainda pode ser enumerado por consultas exatas repetidas: habilite Firebase App Check com enforcement e adote rate limiting no servidor antes de disponibilizar ao público.
 
-## Mensagens pela TDLib
-O corpo enviado pela TDLib é `RDC1` + JSON (id, kind, text, fromEmail, fromName, fromCode, ts, viewOnce, caption, grupo…).
-Mídia vai como documento com esse JSON na legenda. Quem recebe lê o JSON e injeta na mesma rotina do Firestore
-(`RdChatReceiveFirebaseText`), então histórico, leitura, aceitar/recusar download e visualização única continuam iguais.
-Após gravar localmente o app confirma (`tdlibConfirmarRecebimento`) e a mensagem é apagada do Telegram.
-
-## Notas importantes (leia)
-1. **Resolver o destinatário na TDLib:** a TDLib NÃO consegue enviar para um `user_id` que ela nunca “viu”
-   (precisa do access_hash; sem agenda/telefone isso não existe). Por isso cada conta COM_NUMERO recebe,
-   no login, um usuário técnico automático (`rdc_<aleatório>_<rand>`, `SetUsername`) guardado em `tgUsername`;
-   o remetente usa `SearchPublicChat(tgUsername)`. O telefone continua oculto; o `tgUserId` fica só em `users/{uid}`.
-2. **Privacidade do número:** `ShowPhoneNumber` aceita “Ninguém”. Já `AllowFindingByPhoneNumber` no Telegram só
-   aceita “Todos” ou “Meus contatos”; o código tenta “Ninguém” e, se o servidor recusar, usa “Meus contatos”
-   (como o app nunca importa contatos, na prática ninguém encontra você pelo número).
-3. **Token FCM público:** o token sozinho não permite enviar push (precisa de credencial de servidor), mas é um
-   identificador de aparelho. Mais seguro: não expor `fcmToken` em `contactCodes` e deixar o gateway FCM
-   (Worker/Cloud Function) buscar o token em `users/{uid}` com credencial de admin. A regra aceita o campo
-   porque você pediu, mas o app atual já funciona sem ele.
-4. **Envio de FCM** (data-only, `priority:"high"`) deve sair do servidor (Worker/Cloud Function), nunca do cliente.
-5. **api_id/api_hash** da TDLib: crie em https://my.telegram.org e compile a TDLib para Android (td/example/android).
+O conteúdo do campo `text` é gravado como texto no Firestore. O código atual não comprova E2EE. A criptografia do cofre local não equivale a criptografia ponta a ponta no transporte.
