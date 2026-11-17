@@ -1,34 +1,9 @@
-        var backRequestPending = false
-        onBackPressedDispatcher.addCallback(
-            this,
-            object : OnBackPressedCallback(true) {
-
-                override fun handleOnBackPressed() {
-                    if (backRequestPending) return
-                    backRequestPending = true
-
-                    try {
-                        this@MainActivity.webView.evaluateJavascript(
-                            "(function(){try{return window.onAndroidBack?!!window.onAndroidBack():false}catch(e){return false}})()"
-                        ) { handled ->
-                            backRequestPending = false
-
-                            if (handled != "true" && !this@MainActivity.isFinishing) {
-                                this@MainActivity.finish()
-                            }
-                        }
-                    } catch (_: Exception) {
-                        backRequestPending = false
-
-                        if (!this@MainActivity.isFinishing) {
-                            this@MainActivity.finish()
-                        }
-                    }
-                }
-            }
-        )package com.example.rdchat
+package com.example.rdchat
 
 import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.annotation.SuppressLint
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -38,6 +13,7 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
@@ -55,6 +31,9 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
+import androidx.core.app.NotificationCompat
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -242,7 +221,10 @@ class MainActivity : AppCompatActivity() {
         pending.forEach { deliverNativeFcmPayload(it) }
 
         val prefs = getSharedPreferences("rdchat_fcm", Context.MODE_PRIVATE)
-        val cached = prefs.getString("token", "").orEmpty()
+        val waitingToken = pendingNativeFcmToken
+        pendingNativeFcmToken = null
+        val cached = waitingToken?.takeIf { it.isNotBlank() }
+            ?: prefs.getString("token", "").orEmpty()
         if (cached.isNotBlank()) deliverNativeFcmToken(cached)
         try {
             FirebaseMessaging.getInstance().token
@@ -290,11 +272,28 @@ class MainActivity : AppCompatActivity() {
                 allowFileAccessFromFileURLs = false
                 allowUniversalAccessFromFileURLs = false
 
-                javaScriptCanOpenWindowsAutomatically = true
+                javaScriptCanOpenWindowsAutomatically = false
                 setSupportMultipleWindows(false)
             }
 
             webViewClient = object : WebViewClientCompat() {
+
+                override fun shouldOverrideUrlLoading(
+                    view: WebView,
+                    request: WebResourceRequest
+                ): Boolean {
+                    if (!request.isForMainFrame) return false
+                    val target = request.url
+                    val isAppAsset = target.scheme.equals("https", true) &&
+                        target.host.equals(WORKER_DOMAIN, true) &&
+                        target.path.orEmpty().startsWith("/assets/")
+                    if (isAppAsset || target.scheme.equals("about", true)) return false
+                    if (target.scheme.equals("https", true) || target.scheme.equals("http", true)) {
+                        try { startActivity(Intent(Intent.ACTION_VIEW, target)) }
+                        catch (_: Exception) { showMessage("Não foi possível abrir este link.") }
+                    }
+                    return true
+                }
 
                 override fun shouldInterceptRequest(
                     view: WebView,
@@ -306,10 +305,9 @@ class MainActivity : AppCompatActivity() {
 
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
-                
                     if (isTrustedAppPage()) {
+                        flushPendingNativeFcm()
                         requestInitialPermissionsOnce()
-                        requestLocalNetworkPermissionOnce()
                     }
                 }
             }
@@ -541,10 +539,7 @@ class MainActivity : AppCompatActivity() {
                                 val token = task.result ?: return@addOnCompleteListener
                                 prefs.edit().putString("token", token).apply()
 
-                                val js = "window.RdChatFirebaseNativeFcmToken && window.RdChatFirebaseNativeFcmToken(${JSONObject.quote(token)});"
-                                webView.post {
-                                    webView.evaluateJavascript(js, null)
-                                }
+                                this@MainActivity.deliverNativeFcmToken(token)
                             }
                     } catch (error: Exception) {
                         android.util.Log.e("RDCHAT_FCM", "Erro ao solicitar token FCM", error)
@@ -552,6 +547,47 @@ class MainActivity : AppCompatActivity() {
 
                     return cached
                 }
+                @JavascriptInterface
+                fun authenticate() = this@MainActivity.authenticateNative()
+
+                @JavascriptInterface
+                fun getSafetyEventsJson(): String = this@MainActivity.getSafetyEventsJsonNative()
+
+                @JavascriptInterface
+                fun getStorageUsageJson(): String = this@MainActivity.getStorageUsageJsonNative()
+
+                @JavascriptInterface
+                fun recordSafetyEvent(type: String, content: String, reason: String) =
+                    this@MainActivity.recordSafetyEventNative(type, content, reason)
+
+                @JavascriptInterface
+                fun resolveGifLink(url: String, requestId: String) =
+                    this@MainActivity.resolveGifLinkNative(url, requestId)
+
+                @JavascriptInterface
+                fun resolveXGif(url: String, requestId: String) =
+                    this@MainActivity.resolveXGifNative(url, requestId)
+
+                @JavascriptInterface
+                fun reviewMediaBase64(value: String, mime: String, requestId: String) =
+                    this@MainActivity.rejectNativeMediaReview(requestId, "A análise local de mídia não está configurada neste build.")
+
+                @JavascriptInterface
+                fun reviewRemoteMedia(url: String, mime: String, requestId: String) =
+                    this@MainActivity.rejectNativeMediaReview(requestId, "A análise local de mídia remota não está configurada neste build.")
+
+                @JavascriptInterface
+                fun setSafetyProfile(adult: Boolean, restricted: Boolean) =
+                    this@MainActivity.setSafetyProfileNative(adult, restricted)
+
+                @JavascriptInterface
+                fun setSpeakerphoneOn(enabled: Boolean) =
+                    this@MainActivity.setSpeakerphoneNative(enabled)
+
+                @JavascriptInterface
+                fun showNotification(title: String, body: String) =
+                    this@MainActivity.showNativeNotification(title, body)
+
             }, "AndroidBridge")
 
         MyFirebaseMessagingService.tokenListener = { token -> deliverNativeFcmToken(token) }
@@ -599,6 +635,159 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+
+    private fun sendJavascriptCallback(script: String) {
+        if (!::webView.isInitialized) return
+        webView.post {
+            if (isTrustedAppPage()) {
+                try { webView.evaluateJavascript(script, null) } catch (_: Exception) {}
+            }
+        }
+    }
+
+    private fun authenticateNative() {
+        runOnUiThread {
+            if (!isTrustedAppPage()) return@runOnUiThread
+            try {
+                val authenticators = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    BiometricManager.Authenticators.BIOMETRIC_STRONG or
+                        BiometricManager.Authenticators.DEVICE_CREDENTIAL
+                } else {
+                    BiometricManager.Authenticators.BIOMETRIC_WEAK
+                }
+                if (BiometricManager.from(this).canAuthenticate(authenticators) != BiometricManager.BIOMETRIC_SUCCESS) {
+                    sendJavascriptCallback("if (typeof window.onBiometricError === 'function') window.onBiometricError();")
+                    return@runOnUiThread
+                }
+                val info = BiometricPrompt.PromptInfo.Builder()
+                    .setTitle("Confirmar identidade")
+                    .setSubtitle("Confirme para continuar no RdChat")
+                    .setAllowedAuthenticators(authenticators)
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) info.setNegativeButtonText("Cancelar")
+                val prompt = BiometricPrompt(this, ContextCompat.getMainExecutor(this),
+                    object : BiometricPrompt.AuthenticationCallback() {
+                        override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                            sendJavascriptCallback("if (typeof window.onBiometricSuccess === 'function') window.onBiometricSuccess();")
+                        }
+                        override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                            sendJavascriptCallback("if (typeof window.onBiometricError === 'function') window.onBiometricError();")
+                        }
+                    })
+                prompt.authenticate(info.build())
+            } catch (error: Exception) {
+                android.util.Log.w("RDCHAT_BIOMETRIC", "Autenticação biométrica indisponível.", error)
+                sendJavascriptCallback("if (typeof window.onBiometricError === 'function') window.onBiometricError();")
+            }
+        }
+    }
+
+    private fun recordSafetyEventNative(type: String, content: String, reason: String) {
+        try {
+            val prefs = getSharedPreferences("rdchat_safety", MODE_PRIVATE)
+            val current = try { org.json.JSONArray(prefs.getString("events", "[]") ?: "[]") } catch (_: Exception) { org.json.JSONArray() }
+            val next = org.json.JSONArray()
+            val start = (current.length() - 98).coerceAtLeast(0)
+            for (index in start until current.length()) next.put(current.optJSONObject(index) ?: continue)
+            next.put(org.json.JSONObject()
+                .put("type", type.trim().take(40).ifBlank { "Ocorrência" })
+                .put("reason", reason.trim().take(180))
+                .put("contentLength", content.length.coerceAtMost(320))
+                .put("timestamp", System.currentTimeMillis()))
+            prefs.edit().putString("events", next.toString()).apply()
+        } catch (error: Exception) {
+            android.util.Log.w("RDCHAT_SAFETY", "Não foi possível salvar o evento local.", error)
+        }
+    }
+
+    private fun getSafetyEventsJsonNative(): String =
+        getSharedPreferences("rdchat_safety", MODE_PRIVATE).getString("events", "[]") ?: "[]"
+
+    private fun setSafetyProfileNative(adult: Boolean, restricted: Boolean) {
+        getSharedPreferences("rdchat_safety", MODE_PRIVATE).edit()
+            .putBoolean("adult_profile", adult)
+            .putBoolean("restricted_profile", restricted)
+            .putLong("profile_updated_at", System.currentTimeMillis())
+            .apply()
+    }
+
+    private fun directorySize(directory: File): Long {
+        if (!directory.exists()) return 0L
+        return try { directory.walkTopDown().filter { it.isFile }.sumOf { it.length() } }
+        catch (_: Exception) { 0L }
+    }
+
+    private fun getStorageUsageJsonNative(): String {
+        val modelBytes = directorySize(File(filesDir, "tdlib")) + directorySize(File(filesDir, "tdlib_files"))
+        val cacheBytes = directorySize(cacheDir)
+        return org.json.JSONObject()
+            .put("totalBytes", directorySize(filesDir) + cacheBytes)
+            .put("modelBytes", modelBytes)
+            .put("cacheBytes", cacheBytes)
+            .toString()
+    }
+
+    private fun resolveGifLinkNative(rawUrl: String, requestId: String) {
+        val uri = try { Uri.parse(rawUrl.trim()) } catch (_: Exception) { null }
+        val path = uri?.path.orEmpty().lowercase(java.util.Locale.ROOT)
+        val direct = uri != null && uri.scheme.equals("https", true) &&
+            uri.userInfo.isNullOrBlank() && (path.endsWith(".gif") || path.endsWith(".mp4"))
+        val payload = org.json.JSONObject().put("ok", direct)
+        if (direct) payload.put("url", uri.toString()).put("prev", uri.toString()).put("gifVideo", path.endsWith(".mp4"))
+        else payload.put("reason", "Use um link HTTPS direto terminado em .gif ou .mp4; conversão de páginas não está configurada.")
+        sendJavascriptCallback("if (typeof window.rdOnGifLinkResolved === 'function') window.rdOnGifLinkResolved(${JSONObject.quote(requestId)}, $payload);")
+    }
+
+    private fun resolveXGifNative(rawUrl: String, requestId: String) {
+        val payload = org.json.JSONObject().put("ok", false)
+            .put("reason", "A conversão de publicações do X exige um resolvedor de mídia autorizado, ainda não configurado.")
+        sendJavascriptCallback("if (typeof window.rdOnGifLinkResolved === 'function') window.rdOnGifLinkResolved(${JSONObject.quote(requestId)}, $payload);")
+    }
+
+    private fun rejectNativeMediaReview(requestId: String, reason: String) {
+        recordSafetyEventNative("media_review_unavailable", "", reason)
+        val payload = org.json.JSONObject().put("allowed", false).put("reason", reason)
+        sendJavascriptCallback("if (typeof window.rdOnNativeMediaReview === 'function') window.rdOnNativeMediaReview(${JSONObject.quote(requestId)}, $payload);")
+    }
+
+    private fun setSpeakerphoneNative(enabled: Boolean) {
+        try {
+            val audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            @Suppress("DEPRECATION")
+            audio.isSpeakerphoneOn = enabled
+        } catch (error: Exception) {
+            android.util.Log.w("RDCHAT_AUDIO", "Não foi possível alterar o alto-falante.", error)
+        }
+    }
+
+    private fun showNativeNotification(title: String, body: String) {
+        runOnUiThread {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                !hasPermission(Manifest.permission.POST_NOTIFICATIONS)) return@runOnUiThread
+            try {
+                val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    manager.createNotificationChannel(NotificationChannel("rdchat_messages", "Mensagens", NotificationManager.IMPORTANCE_HIGH))
+                }
+                val intent = Intent(this, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                }
+                val pending = PendingIntent.getActivity(this, 7301, intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+                val notification = NotificationCompat.Builder(this, "rdchat_messages")
+                    .setSmallIcon(R.mipmap.ic_launcher)
+                    .setContentTitle(title.trim().take(80).ifBlank { "RdChat" })
+                    .setContentText(body.trim().take(180).ifBlank { "Nova mensagem" })
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setAutoCancel(true)
+                    .setContentIntent(pending)
+                    .build()
+                manager.notify((System.currentTimeMillis() % Int.MAX_VALUE).toInt(), notification)
+            } catch (error: Exception) {
+                android.util.Log.w("RDCHAT_NOTIFICATION", "Não foi possível exibir a notificação.", error)
+            }
+        }
+    }
+
     private fun isTrustedAppPage(): Boolean {
         if (!::webView.isInitialized) return false
 
@@ -606,7 +795,8 @@ class MainActivity : AppCompatActivity() {
             val uri = Uri.parse(webView.url ?: return false)
 
             uri.scheme.equals("https", true) &&
-                uri.host.equals(WORKER_DOMAIN, true)
+                uri.host.equals(WORKER_DOMAIN, true) &&
+                uri.path.orEmpty().startsWith("/assets/")
         } catch (_: Exception) {
             false
         }
@@ -788,25 +978,6 @@ class MainActivity : AppCompatActivity() {
         requestRuntimePermissions(permissions)
     }
 
-    private fun requestLocalNetworkPermissionOnce() {
-        if (Build.VERSION.SDK_INT < 37) return
-
-        val permission = "android.permission.ACCESS_LOCAL_NETWORK"
-        if (hasPermission(permission)) return
-
-        val preferences = getSharedPreferences(
-            "rdchat_runtime_permissions",
-            MODE_PRIVATE
-        )
-
-        if (preferences.getBoolean("local_network_prompt_api37_v1", false)) return
-
-        preferences.edit()
-            .putBoolean("local_network_prompt_api37_v1", true)
-            .apply()
-
-        requestRuntimePermissions(listOf(permission))
-    }
     private fun cameraPermissionsFor(type: String): List<String> {
 
         val permissions = mutableListOf(Manifest.permission.CAMERA)

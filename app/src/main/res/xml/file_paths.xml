@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <cache-path name="rdchat_private_cache" path="midia_privada/" />
-    <files-path name="rdchat_private_files" path="." />
-<cache-path name="rdchat_media" path="midia_privada/" /></paths>
+    <!-- Somente arquivos temporários explicitamente preparados para compartilhamento. -->
+    <cache-path name="rdchat_private_media" path="midia_privada/" />
+</paths>

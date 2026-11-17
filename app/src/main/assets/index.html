@@ -2,6 +2,14 @@
 <!-- RdChat Signal V1.0.1: correção do boot/login e inicialização segura da conexão. -->
 <html lang="pt-BR" data-rdchat-version="1.0.1" data-outline="almost">
 <head>
+<script id="rdchat-zero-p2p-policy">
+/* Política fixa do app: sem Trystero, P2P ou criação de RTCPeerConnection. */
+Object.defineProperty(window, 'RDCHAT_ZERO_P2P', {
+  value: true,
+  writable: false,
+  configurable: false
+});
+</script>
 <script>/* Android: compartilhamentos pendentes (a inicialização chamava esta função, que não existia) */window.processPendingShare=window.processPendingShare||function(){};</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
@@ -11263,8 +11271,7 @@ function showHome() {
 <script>
 window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgames.workers.dev'; // URL pública do Worker; nunca coloque tokens/chaves aqui.
 /* RdChat Signal V1 — Firebase para identidade, diretório, presença e texto.
- * Texto: Firestore + caixa de entrada. Anexos: Telegram Relay protegido quando configurado, com P2P legado como contingência.
- * Chamadas continuam WebRTC; a sinalização exige a URL real do Realtime Database em RTDB_URL.
+ * Texto: Firestore + caixa de entrada. Anexos: relay HTTPS. Trystero/P2P/WebRTC permanecem desativados.
  */
 (() => {
   'use strict';
@@ -11459,7 +11466,7 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
     const now = Date.now();
     const inviteBase = { groupInvite: true, gid, groupKey: group.key, groupName: String(group.name || 'Grupo').slice(0,60),
       gm: emails, memberUids: uidMap, memberNames: nameMap, createdAt: Number(group.createdAt) || 0,
-      firebaseRoomId: roomId, fromUid: currentUid, fromEmail: ownerEmail, fromName: String(me && me.name || 'Contato').slice(0,40), ts: now, membershipUpdatedAt: now };
+      firebaseRoomId: roomId, fromUid: currentUid, fromEmail: ownerEmail, fromName: String(me && me.name || 'Contato').slice(0,40), ts: now, membershipUpdatedAt: now, expiresAt: firebase.firestore.Timestamp.fromMillis(now + 7 * 24 * 60 * 60 * 1000) };
     await Promise.all(emails.filter(email => email !== ownerEmail).map(email => {
       const recipientUid = uidMap[email];
       const docId = ('group_' + gid + '_' + now.toString(36) + '_' + currentUid).replace(/[^A-Za-z0-9_-]/g,'_').slice(0,140);
@@ -11721,6 +11728,7 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
       fromName: String((me && me.name) || 'Contato').slice(0, 40),
       fromCode: codeNorm(me && me.code),
       ts: Number(message.ts) || Date.now(),
+      expiresAt: firebase.firestore.Timestamp.fromMillis(Date.now() + 7 * 24 * 60 * 60 * 1000),
       deliveredBy: [],
       readBy: [],
       group: info.group,
@@ -11744,7 +11752,7 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
       roomId: info.roomId, messageId: id, fromUid: currentUid, toUid: recipientUid,
       fromEmail: String((me && me.email) || ''), fromName: String((me && me.name) || 'Contato').slice(0, 40),
       fromCode: codeNorm(me && me.code), group: info.group, groupKey: info.groupKey,
-      groupName: info.groupName, participantEmails: info.participantEmails, ts: payload.ts
+      groupName: info.groupName, participantEmails: info.participantEmails, ts: payload.ts, expiresAt: payload.expiresAt
     })));
     // O emissor acompanha o room; o gateway envia FCM data-only depois da gravação Firestore.
     await watchTextConversation(target);
@@ -12006,8 +12014,8 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
     const ref=roomRef.collection('messages').doc(String(original.id));
     const prior=await ref.get();
     if(prior.exists && String((prior.data()||{}).fromUid||'')!==String(currentUid)) throw new Error('O usuário atual não é o autor original desta mensagem.');
-    await ref.set({id:String(original.id),roomId:info.roomId,kind:'deleted',deletedForEveryone:true,deletedAt:Number(event.deletedAt)||Date.now(),deletedBy:String(event.deletedBy||me.email),deletedByName:String(event.deletedByName||me.name||'Você').slice(0,40),fromUid:currentUid,toUid:info.recipientUids[0],toUids:info.recipientUids,fromEmail:String((me&&me.email)||''),toEmail:info.emails[0]||'',toEmails:info.emails,fromName:String((me&&me.name)||'Contato').slice(0,40),fromCode:codeNorm(me&&me.code),ts:Number(original.ts)||Date.now(),deliveredBy:prior.exists?((prior.data()||{}).deliveredBy||[]):[],readBy:prior.exists?((prior.data()||{}).readBy||[]):[],group:info.group,groupKey:info.groupKey,groupName:info.groupName,participantEmails:info.participantEmails},{merge:true});
-    await Promise.all(info.recipientUids.map(uid=>fs.collection('messageInbox').doc(uid).collection('items').doc(String(original.id)+'_'+currentUid).set({roomId:info.roomId,messageId:String(original.id),fromUid:currentUid,toUid:uid,fromEmail:String((me&&me.email)||''),fromName:String((me&&me.name)||'Contato').slice(0,40),fromCode:codeNorm(me&&me.code),group:info.group,groupKey:info.groupKey,groupName:info.groupName,participantEmails:info.participantEmails,ts:Number(original.ts)||Date.now()})));
+    await ref.set({id:String(original.id),roomId:info.roomId,kind:'deleted',deletedForEveryone:true,deletedAt:Number(event.deletedAt)||Date.now(),deletedBy:String(event.deletedBy||me.email),deletedByName:String(event.deletedByName||me.name||'Você').slice(0,40),fromUid:currentUid,toUid:info.recipientUids[0],toUids:info.recipientUids,fromEmail:String((me&&me.email)||''),toEmail:info.emails[0]||'',toEmails:info.emails,fromName:String((me&&me.name)||'Contato').slice(0,40),fromCode:codeNorm(me&&me.code),ts:Number(original.ts)||Date.now(),expiresAt:firebase.firestore.Timestamp.fromMillis(Date.now()+7*24*60*60*1000),deliveredBy:prior.exists?((prior.data()||{}).deliveredBy||[]):[],readBy:prior.exists?((prior.data()||{}).readBy||[]):[],group:info.group,groupKey:info.groupKey,groupName:info.groupName,participantEmails:info.participantEmails},{merge:true});
+    await Promise.all(info.recipientUids.map(uid=>fs.collection('messageInbox').doc(uid).collection('items').doc(String(original.id)+'_'+currentUid).set({roomId:info.roomId,messageId:String(original.id),fromUid:currentUid,toUid:uid,fromEmail:String((me&&me.email)||''),fromName:String((me&&me.name)||'Contato').slice(0,40),fromCode:codeNorm(me&&me.code),group:info.group,groupKey:info.groupKey,groupName:info.groupName,participantEmails:info.participantEmails,ts:Number(original.ts)||Date.now(),expiresAt:firebase.firestore.Timestamp.fromMillis(Date.now()+7*24*60*60*1000)})));
     await watchTextConversation(target);
     return true;
   }
@@ -14320,6 +14328,7 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
   }
   function addLocalTracks(p){ if(p.tracksAdded) return; p.tracksAdded=true; try{ S.local.getTracks().forEach(function(t){ p.pc.addTrack(t,S.local); }); }catch(_){} }
   function makePC(p,initiator){
+    if (window.RDCHAT_ZERO_P2P === true) throw new Error('Chamadas P2P/WebRTC estão desativadas nesta versão do RdChat.');
     var pc=new RTCPeerConnection({iceServers:CFG.iceServers}); p.pc=pc;
     /* quem já está na chamada oferece; quem entra só responde (evita disputa de negociação) */
     pc.onnegotiationneeded=async function(){ if(!p.tracksAdded) return; try{ p.makingOffer=true; await pc.setLocalDescription(); sig(p.email,'offer',{sdp:pc.localDescription}); }catch(_){} finally{ p.makingOffer=false; } };
