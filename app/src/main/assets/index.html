@@ -6052,6 +6052,27 @@ function rdchatRenderTextPreservingEmoji(value) {
 
   window.__rd = { me: () => me, contactOf: e => contactOf(e), postBubble: (k, o) => postBubble(k, o), meta: k => meta[k], cur: () => cur(), get msgStore() { return msgStore; }, saveMsg: m => saveMsg(m), findBubble: (k, i) => findBubble(k, i),
     toast: t => toast(t), requestPermissions: () => requestPermissions(), get currentKey() { return currentKey; }, showMsgData: b => showMsgData(b), findBubbleCur: id => findBubble(currentKey, id), closeChatMenu: () => closeChatMenu(),
+    openChatFromNotification: async payload => {
+      const senderUid = String(payload && (payload.senderId || payload.fromUid) || '');
+      const roomId = String(payload && payload.roomId || '');
+      let key = '';
+      const contact = contacts.find(item => senderUid && String(item.firebaseUid || '') === senderUid);
+      if (contact) key = contact.email;
+      if (!key && roomId) {
+        const match = Object.keys(meta).find(candidate => String((meta[candidate] || {}).firebaseRoomId || '') === roomId);
+        if (match) key = match;
+      }
+      if (!key) { toast('Notificação recebida. Atualize sua lista de conversas para localizar o contato.'); return false; }
+      const item = meta[key] || getMeta(key);
+      await openChat(key, item.color, item.initial, item.isGroup);
+      const messageId = String(payload && (payload.messageId || payload.id) || '');
+      if (messageId) {
+        let tries = 0;
+        const locate = () => { if (++tries > 30) return; if (currentKey === key && findBubble(key, messageId)) { try { gotoMessage(messageId); } catch (_) {} return; } setTimeout(locate, 160); };
+        setTimeout(locate, 120);
+      }
+      return true;
+    },
     removeMedia: m => { try { window.rdChatRemoveMessageMedia && window.rdChatRemoveMessageMedia(m); } catch (_) {} },
     clearChat: async key => {
       const m = meta[key]; if (!m) return;
@@ -14912,6 +14933,10 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
   // Compatibilidade com nomes de callback usados por versões anteriores do MainActivity.
   window.RdChatNativeFcmToken=window.RdChatFirebaseNativeFcmToken;
   window.onFCMToken=window.RdChatFirebaseNativeFcmToken;
+  window.RdChatOpenConversationFromNotification=function(payload){
+    try{ if(window.__rd && typeof window.__rd.openChatFromNotification==='function') return window.__rd.openChatFromNotification(payload||{}); }catch(e){ console.warn('RdChat: não foi possível abrir a conversa da notificação.',e); }
+    return false;
+  };
   window.onFCMMessageReceived=function(payload){
     if(!payload||typeof payload!=='object') return;
     // Push nativo do Telegram: entregar o payload original ao ProcessPushNotification da TDLib.
