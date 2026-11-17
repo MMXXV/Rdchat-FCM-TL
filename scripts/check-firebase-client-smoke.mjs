@@ -87,15 +87,22 @@ try {
   console.log("FIREBASE_ANONYMOUS_AUTH=enabled");
 
   const authHeaders = { Authorization: `Bearer ${idToken}` };
-  const queryKey = `key=${encodeURIComponent(apiKey)}`;
   const smokeEmail = `rdchat-smoke-${uid.toLowerCase()}@rdchat.local`;
   const now = Date.now();
 
+  let stage = "Firestore users read authorization";
+  try {
+    await requestJson(`${firestoreBase}/users/${encodeURIComponent(uid)}`, { headers: authHeaders });
+  } catch (error) {
+    if (error.status !== 404) throw new Error(`Firestore users read authorization: ${error.message}`);
+  }
+
+  stage = "Firestore contactCodes read authorization";
   let foundFreeCode = false;
   for (let attempt = 0; attempt < 12; attempt++) {
     testCode = String(crypto.randomInt(100000, 1000000));
     try {
-      await requestJson(`${firestoreBase}/contactCodes/${testCode}?${queryKey}`, {
+      await requestJson(`${firestoreBase}/contactCodes/${testCode}`, {
         headers: authHeaders
       });
     } catch (error) {
@@ -108,7 +115,8 @@ try {
   }
   if (!foundFreeCode) throw new Error("Não foi possível reservar um código de contato temporário.");
 
-  const contactUrl = `${firestoreBase}/contactCodes?${queryKey}&documentId=${encodeURIComponent(testCode)}`;
+  stage = "Firestore contactCodes create";
+  const contactUrl = `${firestoreBase}/contactCodes?documentId=${encodeURIComponent(testCode)}`;
   await requestJson(contactUrl, {
     method: "POST",
     headers: authHeaders,
@@ -130,7 +138,8 @@ try {
   console.log("FIRESTORE_CONTACT_CODES_WRITE=allowed");
   console.log("FIRESTORE_PROFILE_METADATA_RULES=allowed");
 
-  const userUrl = `${firestoreBase}/users?${queryKey}&documentId=${encodeURIComponent(uid)}`;
+  stage = "Firestore users create";
+  const userUrl = `${firestoreBase}/users?documentId=${encodeURIComponent(uid)}`;
   await requestJson(userUrl, {
     method: "POST",
     headers: authHeaders,
@@ -147,7 +156,8 @@ try {
   result.firestoreUsersWrite = "allowed";
   console.log("FIRESTORE_USERS_WRITE=allowed");
 
-  const presenceUrl = `${firestoreBase}/presence?${queryKey}&documentId=${encodeURIComponent(uid)}`;
+  stage = "Firestore presence create";
+  const presenceUrl = `${firestoreBase}/presence?documentId=${encodeURIComponent(uid)}`;
   await requestJson(presenceUrl, {
     method: "POST",
     headers: authHeaders,
@@ -159,12 +169,12 @@ try {
 } catch (error) {
   const status = error.status ? `HTTP ${error.status}: ` : "";
   const message = error.firebaseCode ? authErrorMessage(error) : String(error.message || error);
+  result.failureStage = typeof stage === "string" ? stage : "Firebase Auth";
   result.failure = `${status}${message}`;
   console.error("FIREBASE_CLIENT_SMOKE_FAILED=" + result.failure);
 } finally {
   if (uid && idToken) {
     const headers = { Authorization: `Bearer ${idToken}` };
-    const queryKey = `key=${encodeURIComponent(apiKey)}`;
     const cleanupErrors = [];
     const deletions = [
       presenceDocCreated ? `/presence/${encodeURIComponent(uid)}` : "",
@@ -173,7 +183,7 @@ try {
     ].filter(Boolean);
     for (const path of deletions) {
       try {
-        await requestJson(`${firestoreBase}${path}?${queryKey}`, {
+        await requestJson(`${firestoreBase}${path}`, {
           method: "DELETE",
           headers
         });
