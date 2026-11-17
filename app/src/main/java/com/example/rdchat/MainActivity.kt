@@ -639,6 +639,12 @@ class MainActivity : AppCompatActivity() {
                 @JavascriptInterface
                 fun enviarViaTelegram(json: String) = telegramBridge.enviarViaTelegram(json)
 
+                @JavascriptInterface
+                fun tdlibRegistrarTokenFcm(token: String) = telegramBridge.registrarTokenFcm(token)
+
+                @JavascriptInterface
+                fun tdlibProcessarPushTelegram(payload: String) = telegramBridge.processarPushTelegram(payload)
+
             }, "AndroidBridge")
 
         MyFirebaseMessagingService.tokenListener = { token -> deliverNativeFcmToken(token) }
