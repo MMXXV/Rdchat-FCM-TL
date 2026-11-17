@@ -23,6 +23,9 @@ for (let index = 0; index < scripts.length; index++) {
 }
 
 const has = (value) => html.includes(value);
+const phoneInfoStart = html.indexOf('id="rdTgPhoneInfo"');
+const phoneInfoEnd = html.indexOf("</button>", phoneInfoStart);
+const phoneInfoMarkup = phoneInfoStart >= 0 && phoneInfoEnd >= 0 ? html.slice(phoneInfoStart, phoneInfoEnd) : "";
 const checks = {
   singlePrimaryButton: (html.match(/id=["']authSubmit["']/g) || []).length === 1,
   noSeparateTelegramButtons: !has('id="rdTgSend"') && !has('id="rdTgCodeBtn"') && !has('id="rdTgPassBtn"'),
@@ -30,7 +33,7 @@ const checks = {
   sameButtonConfirmsCode: has("submit.textContent='Confirmar código'"),
   sameButtonConfirmsTwoStepPassword: has("submit.textContent='Confirmar senha'"),
   privacyInfoIcon: has('id="rdTgPhoneInfo"'),
-  privacyInfoUsesEye: has('<path d="M1 12s4-8 11-8 11 8-4 8-11 8-11-8z"/>') && !has('M12 11v5M12 7h.01'),
+  privacyInfoUsesEye: phoneInfoMarkup.includes("M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z") && !phoneInfoMarkup.includes('M12 11v5'),
   privacyInfoAutoHides: has('},4200);'),
   phoneModeHidesSecondarySwitch: has('#screen-login.rd-login-phone-mode #authModeSwitch{display:none!important}'),
   phoneModeHasCleanSelector: has('#screen-login.rd-login-phone-mode .rd-modes{'),
