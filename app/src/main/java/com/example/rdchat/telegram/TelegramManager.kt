@@ -289,13 +289,15 @@ class TelegramManager(
     private fun afterLogin() {
         val completed = AtomicInteger(0)
         val phoneHidden = AtomicBoolean(false)
+        val phoneDiscoveryBlocked = AtomicBoolean(false)
 
         fun finishPrivacyStep() {
             if (completed.incrementAndGet() == 2) {
                 garantirUsername({ username ->
                     send(TdApi.GetMe()) { me ->
                         if (me is TdApi.User) {
-                            cb.onReady(me.id, username, phoneHidden.get())
+                            // Só informa privacidade confirmada quando as duas regras foram aceitas.
+                            cb.onReady(me.id, username, phoneHidden.get() && phoneDiscoveryBlocked.get())
                         } else if (me is TdApi.Error) {
                             cb.onError(me.message)
                         }
@@ -309,7 +311,7 @@ class TelegramManager(
         )
         send(TdApi.SetUserPrivacySettingRules(TdApi.UserPrivacySettingShowPhoneNumber(), restrictAll)) { result ->
             if (result is TdApi.Error) {
-                Log.w(TAG, "Não foi possível ocultar o número no Telegram: " + result.message)
+                Log.w(TAG, "O Telegram não confirmou ocultação do número: " + result.message)
             } else {
                 phoneHidden.set(true)
             }
@@ -317,17 +319,14 @@ class TelegramManager(
         }
 
         val findingByPhone = TdApi.UserPrivacySettingAllowFindingByPhoneNumber()
+        // Não relaxar para "somente contatos": a promessa do RdChat é não ser localizável pelo número.
         send(TdApi.SetUserPrivacySettingRules(findingByPhone, restrictAll)) { result ->
             if (result is TdApi.Error) {
-                val contactsOnly = TdApi.UserPrivacySettingRules(
-                    arrayOf<TdApi.UserPrivacySettingRule>(TdApi.UserPrivacySettingRuleAllowContacts())
-                )
-                send(TdApi.SetUserPrivacySettingRules(findingByPhone, contactsOnly)) {
-                    finishPrivacyStep()
-                }
+                Log.w(TAG, "O Telegram não confirmou bloqueio de descoberta por telefone: " + result.message)
             } else {
-                finishPrivacyStep()
+                phoneDiscoveryBlocked.set(true)
             }
+            finishPrivacyStep()
         }
     }
 

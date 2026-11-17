@@ -36,6 +36,7 @@ const checks = {
   privacyInfoUsesEye: phoneInfoMarkup.includes("M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z") && !phoneInfoMarkup.includes('M12 11v5'),
   privacyInfoAutoHides: has('},4200);'),
   phoneModeHidesSecondarySwitch: has('#screen-login.rd-login-phone-mode #authModeSwitch{display:none!important}'),
+  failedPhonePrivacyWarnsUser: has("if(!T.phoneHidden)tt('Atenção: o Telegram não confirmou todas as restrições do número."),
   phoneModeHasCleanSelector: has('#screen-login.rd-login-phone-mode .rd-modes{'),
   privacyIntroRemoved: !has('Leve a privacidade com você.') && !has('Seja você em cada mensagem.'),
   privacyInfoExactText: has('Seu número fica oculto: ninguém vê nem encontra você por ele. O RdChat usa só o código de 6 dígitos.'),

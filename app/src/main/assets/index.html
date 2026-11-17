@@ -17584,7 +17584,7 @@ var T=window.RdChatTdlib={ready:false,state:'idle',userId:'',username:'',phoneHi
   enviarCodigo:function(c){if(has('tdlibEnviarCodigo'))B().tdlibEnviarCodigo(String(c))},
   enviarSenha:function(p){if(has('tdlibEnviarSenha'))B().tdlibEnviarSenha(String(p))},
   onAuthState:function(st){T.state=String(st||'');render()},
-  onReady:function(j){var d=typeof j==='string'?JSON.parse(j):(j||{});T.ready=true;T.state='ready';T.userId=String(d.userId||'');T.username=String(d.username||'');T.phoneHidden=!!d.phoneHidden;render()},
+  onReady:function(j){var d=typeof j==='string'?JSON.parse(j):(j||{});T.ready=true;T.state='ready';T.userId=String(d.userId||'');T.username=String(d.username||'');T.phoneHidden=!!d.phoneHidden;if(!T.phoneHidden)tt('Atenção: o Telegram não confirmou todas as restrições do número. Verifique Privacidade e Segurança no Telegram.');render()},
   onError:function(m){tt(String(m||'Erro no Telegram'))},
   baixar:function(fileId){return new Promise(function(res,rej){if(!has('tdlibBaixarArquivo'))return rej(new Error('Ponte TDLib indisponível'));var id='f'+(++seq);pend[id]={res:res,rej:rej,fileId:String(fileId)};B().tdlibBaixarArquivo(String(fileId),id);setTimeout(function(){if(pend[id]){delete pend[id];rej(new Error('Tempo esgotado ao baixar do Telegram'))}},180000)})},
   onArquivo:function(reqId,dataUrl,ok,err){var p=pend[reqId];if(!p)return;delete pend[reqId];if(ok){var a=ackMap[p.fileId];if(a){ack(a);delete ackMap[p.fileId]}p.res(dataUrl)}else p.rej(new Error(err||'Falha ao baixar'))},

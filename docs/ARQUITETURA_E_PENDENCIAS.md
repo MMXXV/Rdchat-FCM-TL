@@ -65,7 +65,7 @@ O HTML define política imutável `RDCHAT_ZERO_P2P=true`; Trystero não é carre
 - O carregamento TDLib só é acionado após a página confiável carregar e confirmar `rdchat_profile.accountType === 'COM_NUMERO'`; o Modo A (`SEM_NUMERO`) não inicializa TDLib.
 - A dependência TDLib JNI continua empacotada no APK único; ela ainda contribui para o tamanho do APK, embora não seja inicializada no Modo A.
 - O início de autenticação aguarda o estado `AuthorizationStateWaitPhoneNumber`; o número não é enviado antes de `SetTdlibParameters` concluir.
-- A privacidade de número ainda precisa de validação real: o código tenta ocultar o número e bloquear descoberta por telefone, mas hoje permite fallback para “somente contatos” se o bloqueio total falhar. Nesse caso, a frase “ninguém vê nem encontra” não está garantida; remover o fallback e testar o retorno da API antes de apresentar isso como proteção confirmada.
+- A rotina nativa tenta aplicar `RestrictAll` tanto para exibir o número quanto para permitir encontrá-lo. O fallback permissivo para “somente contatos” foi removido. O login avisa quando o Telegram não confirma qualquer uma das duas regras; nesse caso, a privacidade não deve ser considerada garantida até o usuário verificar Privacidade e Segurança no Telegram. Ainda falta testar com contas reais e terceiros.
 - A chave aleatória do banco TDLib é protegida com AES-GCM e Android Keystore.
 - O usuário existente mantém o próprio username Telegram; um username técnico só é criado se não houver um.
 
