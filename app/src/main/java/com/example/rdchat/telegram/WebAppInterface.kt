@@ -79,6 +79,26 @@ class WebAppInterface(
 
     private fun quote(value: String?): String = JSONObject.quote(value ?: "")
 
+    private fun fileSuffix(displayName: String, mime: String): String {
+        val extension = displayName.substringAfterLast('.', "").lowercase()
+        if (extension.matches(Regex("[a-z0-9]{1,8}"))) return ".$extension"
+        return when (mime.substringBefore(';').trim().lowercase()) {
+            "image/jpeg" -> ".jpg"
+            "image/png" -> ".png"
+            "image/webp" -> ".webp"
+            "image/gif" -> ".gif"
+            "video/mp4" -> ".mp4"
+            "video/quicktime" -> ".mov"
+            "audio/mp4" -> ".m4a"
+            "audio/mpeg" -> ".mp3"
+            "audio/ogg" -> ".ogg"
+            "audio/aac" -> ".aac"
+            "audio/wav", "audio/x-wav" -> ".wav"
+            "application/pdf" -> ".pdf"
+            else -> ".bin"
+        }
+    }
+
     @JavascriptInterface
     fun tdlibIniciarLogin(phone: String) = enqueueTdlib { tg.iniciarLogin(phone) }
 
@@ -112,9 +132,12 @@ class WebAppInterface(
 
                 val localUri = data.optString("uriLocal")
                 val dataUrl = data.optString("dataUrl")
+                val mime = data.optString("mime")
+                val displayName = data.optString("nome")
+                val suffix = fileSuffix(displayName, mime)
                 if (localUri.isNotBlank()) {
                     val uri = Uri.parse(localUri)
-                    temporaryFile = File.createTempFile("out_", ".bin", directory)
+                    temporaryFile = File.createTempFile("out_", suffix, directory)
                     val input = ctx.contentResolver.openInputStream(uri)
                         ?: throw IllegalArgumentException("Não foi possível abrir o arquivo selecionado.")
                     input.use { source ->
@@ -138,7 +161,7 @@ class WebAppInterface(
                     }
                     val encoded = dataUrl.substringAfter("base64,", "")
                     if (encoded.isBlank()) throw IllegalArgumentException("Formato de arquivo Base64 inválido.")
-                    temporaryFile = File.createTempFile("out_", ".bin", directory)
+                    temporaryFile = File.createTempFile("out_", suffix, directory)
                     temporaryFile!!.writeBytes(Base64.decode(encoded, Base64.DEFAULT))
                 }
 
