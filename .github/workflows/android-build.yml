@@ -33,6 +33,9 @@ jobs:
       - name: Gradle Wrapper
         uses: gradle/actions/setup-gradle@v4
       - name: Compile and unit tests
+        env:
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
         run: ./gradlew --no-daemon :app:assembleDebug :app:testDebugUnitTest
       - name: Upload debug APK
         uses: actions/upload-artifact@v4

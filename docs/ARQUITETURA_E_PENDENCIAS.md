@@ -45,19 +45,22 @@ A fila local do FCM é SharedPreferences com até 50 eventos de wake, não um ba
 
 O HTML define política imutável `RDCHAT_ZERO_P2P=true`; Trystero não é carregado e `makePC` lança erro antes da criação da PeerConnection. A chamada de saída agora falha antes de pedir microfone/câmera, a sinalização de chamada não é mais enviada e sinais antigos são descartados. Os elementos visuais de chamadas ainda existem; a versão atual deve ser tratada como sem chamadas até integrar um serviço compatível com a arquitetura desejada.
 
-## TDLib — não ativada
+## TDLib — ponte Android integrada; credenciais e validação pendentes
 
-A raiz antiga tinha código em pacote diferente, API_HASH hardcoded já exposto publicamente, sem AAR/JNI .so no módulo e sem dependência Gradle. Isso não pode ser ligado sem binários.
+- O módulo `:app` agora inclui o TDLib Java/JNI por dependência fixada a commit, com ABIs arm64-v8a, armeabi-v7a, x86 e x86_64.
+- `MainActivity` registra os métodos esperados pelo HTML em `AndroidBridge` sem substituir a ponte nativa existente.
+- O carregamento TDLib é acionado após a página confiável carregar, permitindo retomar a sessão persistida.
+- O início de autenticação aguarda o estado `AuthorizationStateWaitPhoneNumber`; o número não é enviado antes de `SetTdlibParameters` concluir.
+- A chave aleatória do banco TDLib é protegida com AES-GCM e Android Keystore.
+- O usuário existente mantém o próprio username Telegram; um username técnico só é criado se não houver um.
 
-Faltam:
-- revogar/rotacionar o API_HASH exposto; não reutilizar a credencial anterior;
-- receber/compilar TDLib Android, AAR e JNI `.so` para arm64-v8a (e x86_64, se usar emulador);
-- mover a implementação sanitizada da pasta `integration-staging/tdlib` para o pacote da aplicação apenas após revisão;
-- implementar sessão singleton de processo/serviço, persistência do estado de autenticação, recuperação/2FA e push receiver TDLib;
-- implementar download/upload por URI/streaming; data URL/Base64 não atende 2 GB;
-- ligar callbacks `window.RdChatTdlib` e testar recebimento com app fechado;
-- então ligar o roteador COM_NUMERO no HTML.
-
+Ainda é necessário:
+- configurar um par válido `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` como GitHub Actions Secrets ou em `local.properties`;
+- confirmar que as credenciais atuais não foram revogadas e, se expostas, criar um novo app em my.telegram.org;
+- executar login real em aparelho, confirmar envio do código, senha de duas etapas e retomada após reiniciar;
+- validar notificações e recebimento TDLib com o app encerrado; o serviço persistente/push receiver TDLib ainda não está integrado;
+- testar upload/download de arquivos em aparelhos e limites reais; o recebimento interno por Base64 permanece limitado a 25 MB;
+- validar política de username/privacidade e o fluxo entre duas contas.
 ## Code.gs não substitui o Worker
 
 O Apps Script exige chave compartilhada, ações próprias, NIP-17 kind 1059 e fragmentos cifrados. O HTML atual não gera/decifra esse formato. Foi separado como alternativa de pesquisa; não publicar por cima do endpoint `/v1/push` atual.

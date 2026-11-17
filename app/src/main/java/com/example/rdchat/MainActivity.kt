@@ -42,6 +42,7 @@ import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewClientCompat
 import org.json.JSONObject
 import com.google.firebase.messaging.FirebaseMessaging
+import com.example.rdchat.telegram.WebAppInterface
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
@@ -51,6 +52,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
     private lateinit var assetLoader: WebViewAssetLoader
+    private lateinit var telegramBridge: WebAppInterface
     private var nativeFcmPageReady = false
     private var pendingNativeFcmToken: String? = null
     private val pendingNativeFcmPayloads = mutableListOf<String>()
@@ -307,6 +309,10 @@ class MainActivity : AppCompatActivity() {
                     super.onPageFinished(view, url)
                     if (isTrustedAppPage()) {
                         flushPendingNativeFcm()
+                        try { telegramBridge.tdlibIniciarSeLogado() }
+                        catch (error: Exception) {
+                            android.util.Log.e("RDCHAT_TDLIB", "Falha ao iniciar sessão Telegram.", error)
+                        }
                     }
                 }
             }
@@ -382,6 +388,13 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+
+        telegramBridge = WebAppInterface(
+            this,
+            webView,
+            BuildConfig.TELEGRAM_API_ID,
+            BuildConfig.TELEGRAM_API_HASH
+        )
 
         CookieManager.getInstance().setAcceptCookie(true)
         CookieManager.getInstance()
@@ -586,6 +599,33 @@ class MainActivity : AppCompatActivity() {
                 @JavascriptInterface
                 fun showNotification(title: String, body: String) =
                     this@MainActivity.showNativeNotification(title, body)
+
+                // TDLib: a mesma origem JavaScript usa uma ponte nativa única.
+                @JavascriptInterface
+                fun tdlibIniciarLogin(phone: String) = telegramBridge.tdlibIniciarLogin(phone)
+
+                @JavascriptInterface
+                fun tdlibEnviarCodigo(code: String) = telegramBridge.tdlibEnviarCodigo(code)
+
+                @JavascriptInterface
+                fun tdlibEnviarSenha(password: String) = telegramBridge.tdlibEnviarSenha(password)
+
+                @JavascriptInterface
+                fun tdlibDefinirCodigo(code: String) = telegramBridge.tdlibDefinirCodigo(code)
+
+                @JavascriptInterface
+                fun tdlibIniciarSeLogado() = telegramBridge.tdlibIniciarSeLogado()
+
+                @JavascriptInterface
+                fun tdlibBaixarArquivo(fileId: String, requestId: String) =
+                    telegramBridge.tdlibBaixarArquivo(fileId, requestId)
+
+                @JavascriptInterface
+                fun tdlibConfirmarRecebimento(chatId: String, messageId: String) =
+                    telegramBridge.tdlibConfirmarRecebimento(chatId, messageId)
+
+                @JavascriptInterface
+                fun enviarViaTelegram(json: String) = telegramBridge.enviarViaTelegram(json)
 
             }, "AndroidBridge")
 

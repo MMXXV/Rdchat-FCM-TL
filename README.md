@@ -36,6 +36,19 @@ Este repositório inclui os scripts e o JAR oficiais do Gradle Wrapper 9.6.0. A 
 
 O código-fonte dos Workers não está neste repositório, portanto os endpoints remotos não foram alterados nem testados.
 
+## Telegram (TDLib)
+
+O modo **Com número** usa TDLib JNI Android. A dependência está fixada a um commit imutável e inclui bibliotecas nativas para arm64-v8a, armeabi-v7a, x86 e x86_64.
+
+As credenciais Telegram não são versionadas. Para compilar com o modo numérico ativo, obtenha um par válido de `api_id` e `api_hash` em [my.telegram.org](https://my.telegram.org), preferencialmente de uma aplicação nova caso o par anterior tenha sido exposto.
+
+- GitHub Actions: cadastre os segredos `TELEGRAM_API_ID` e `TELEGRAM_API_HASH` em Settings → Secrets and variables → Actions.
+- Build local: adicione `telegramApiId=...` e `telegramApiHash=...` ao arquivo local `local.properties` (já ignorado pelo Git).
+
+Sem essas duas configurações, o APK continua compilando, mas o login por número informa que falta configurar a integração. Não envie credenciais por commit nem em logs.
+
+O primeiro acesso prepara o banco TDLib no diretório privado do app. A chave do banco é aleatória e protegida pelo Android Keystore. O login por número foi conectado à ponte AndroidBridge; a validação final exige credenciais e teste real de recebimento do código Telegram/SMS.
+
 ## Implantação Firebase
 
 O projeto já inclui `firebase.json` e `.firebaserc`. Consulte `docs/CONFIGURAR_FIREBASE.md` para publicar regras, configurar TTL e ativar App Check.
