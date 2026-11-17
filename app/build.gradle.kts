@@ -51,6 +51,17 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    // Gera APKs separados por arquitetura para não embutir todas as bibliotecas TDLib
+    // em um único arquivo. Mantém suporte a ARM e x86 em artefatos independentes.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+            isUniversalApk = false
+        }
+    }
+
     buildTypes {
         debug { isMinifyEnabled = false }
         release { isMinifyEnabled = false }
