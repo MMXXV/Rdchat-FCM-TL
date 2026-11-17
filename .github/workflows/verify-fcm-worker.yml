@@ -63,7 +63,7 @@ jobs:
           distribution: temurin
           java-version: "21"
       - name: Compile Firestore rules in the official local emulator
-        run: npx --yes firebase-tools@15.36.0 emulators:exec --only firestore --project demo-rdchat-rules "node -e \\\"process.exit(0)\\\""
+        run: npx --yes firebase-tools@15.36.0 emulators:exec --only auth,firestore --project demo-rdchat-rules "node scripts/check-firestore-emulator.mjs"
 
   firebase-live-client-smoke:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
