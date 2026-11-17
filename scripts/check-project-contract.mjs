@@ -30,6 +30,8 @@ const fcmService = read("app/src/main/java/com/example/rdchat/MyFirebaseMessagin
 const worker = read("rdchat-fcm-worker/src/index.js");
 const rules = read("firestore.rules");
 const firebaseDeployWorkflow = read(".github/workflows/deploy-firestore-rules.yml");
+const firebaseLiveWorkflow = read(".github/workflows/firebase-live-diagnostics.yml");
+const firebaseLiveCheck = read("scripts/check-firebase-auth-config.mjs");
 const firebaseWorkerWorkflow = read(".github/workflows/deploy-fcm-worker.yml");
 const androidWorkflow = read(".github/workflows/android-build.yml");
 
@@ -62,6 +64,8 @@ check("firestore_rules_limit_contact_code_fields", ruleMetadataFields.every((fie
 check("worker_writes_same_profile_metadata", ruleMetadataFields.every((field) => worker.includes(field)));
 check("firebase_rules_deploy_workflow_uses_project_secret", firebaseDeployWorkflow.includes("FIREBASE_SERVICE_ACCOUNT") && firebaseDeployWorkflow.includes("firestore:rules"));
 check("firebase_worker_workflow_keeps_service_account", firebaseWorkerWorkflow.includes("FIREBASE_SERVICE_ACCOUNT"));
+check("live_auth_audit_uses_service_account", firebaseLiveWorkflow.includes("FIREBASE_SERVICE_ACCOUNT") && firebaseLiveCheck.includes("/admin/v2/projects/"));
+check("live_auth_audit_checks_anonymous_provider", firebaseLiveCheck.includes("signIn?.anonymous?.enabled") && firebaseLiveCheck.includes("CAUSA CONFIRMADA"));
 check("android_build_checks_telegram_hash_secret", androidWorkflow.includes("TELEGRAM_API_HASH"));
 check("manifest_has_internet_and_network", manifest.includes('android.permission.INTERNET') && manifest.includes('android.permission.ACCESS_NETWORK_STATE'));
 check("manifest_has_camera_microphone_and_notifications", manifest.includes('android.permission.CAMERA') && manifest.includes('android.permission.RECORD_AUDIO') && manifest.includes('android.permission.POST_NOTIFICATIONS'));
