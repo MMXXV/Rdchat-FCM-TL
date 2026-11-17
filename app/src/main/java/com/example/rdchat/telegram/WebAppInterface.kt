@@ -47,6 +47,14 @@ class WebAppInterface(
         enqueueTdlib { tg.start() }
     }
 
+    fun registrarTokenFcm(token: String) {
+        enqueueTdlib { tg.registrarTokenFcm(token) }
+    }
+
+    fun processarPushTelegram(payload: String) {
+        enqueueTdlib { tg.processarPushNotification(payload) }
+    }
+
     fun encerrar() {
         if (!closing.compareAndSet(false, true)) return
         try {
