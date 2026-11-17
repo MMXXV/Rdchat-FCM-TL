@@ -81,14 +81,19 @@ class TelegramManager(
     @Volatile private var callEngine: TelegramCallEngine? = null
 
     private val updates = Client.ResultHandler { obj ->
-        // Client.create() starts its receiver thread before returning. This lock ensures
-        // the Client reference is assigned before the first authorization callback runs.
-        synchronized(initializationLock) { }
-        when (obj) {
-            is TdApi.UpdateAuthorizationState -> onAuth(obj.authorizationState)
-            is TdApi.UpdateNewMessage -> onNewMessage(obj.message)
-            is TdApi.UpdateCall -> callEngine?.handleCall(obj.call)
-            is TdApi.UpdateNewCallSignalingData -> callEngine?.handleSignaling(obj)
+        try {
+            // Client.create() starts its receiver thread before returning. This lock ensures
+            // the Client reference is assigned before the first authorization callback runs.
+            synchronized(initializationLock) { }
+            when (obj) {
+                is TdApi.UpdateAuthorizationState -> onAuth(obj.authorizationState)
+                is TdApi.UpdateNewMessage -> onNewMessage(obj.message)
+                is TdApi.UpdateCall -> callEngine?.handleCall(obj.call)
+                is TdApi.UpdateNewCallSignalingData -> callEngine?.handleSignaling(obj)
+            }
+        } catch (error: Throwable) {
+            Log.e(TAG, "Falha ao processar atualização recebida do TDLib.", error)
+            cb.onError("Falha ao processar autenticação Telegram: " + (error.message ?: error.javaClass.simpleName))
         }
     }
 
