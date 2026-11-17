@@ -14383,7 +14383,7 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
   function markConnected(){
     if(!S) return; clearTimeout(S.ringT); stopRing();
     if(!S.startedAt){ S.startedAt=Date.now(); S.timer=setInterval(tick,500); }
-    if(!S.statusT) S.statusT=setInterval(broadcastStatus,30000);
+    if(!S.telegram&&!S.statusT) S.statusT=setInterval(broadcastStatus,30000);
     S.status='connected'; refresh();
   }
   function tick(){ if(!S||!S.startedAt) return; var t=fmtTime(Date.now()-S.startedAt); var a=$('rdcTimer'), b=$('rdcPipT'); if(a) a.textContent=t; if(b) b.textContent=t; }
@@ -14410,6 +14410,23 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
   /* ============ Fluxo: iniciar, receber, aceitar, recusar, encerrar ============ */
   function validCid(c){ return typeof c==='string'&&c.length>=4&&c.length<=40&&/^[a-z0-9]+$/i.test(c); }
   window.rdCallStart=async function(key,video){
+    if(me && me.accountType==='COM_NUMERO' && window.RdChatTdlib && window.RdChatTdlib.ready){
+      if(!(window.rdHasBirthDate&&window.rdHasBirthDate())){if(window.rdRequireBirthDate)window.rdRequireBirthDate('Chamadas');return;}
+      var telegramUsername='';
+      try{telegramUsername=await window.RdChatRouter.telegramUsernameFor(key)}catch(_){}
+      if(!telegramUsername){say('Este contato não possui uma conta Telegram vinculada ao RdChat.');return;}
+      if(typeof MediaStream==='undefined'){say('O aparelho não disponibiliza o suporte de mídia necessário para chamadas.');return;}
+      var email=norm(key);build();
+      S=newState(newId(),!!video,new MediaStream());
+      S.telegram=true;S.status='calling';S.primary=email;S.callId=0;
+      S.invited.set(email,{name:nameOf(email)});
+      S.parts.set(email,{email:email,name:nameOf(email),photo:photoOf(email),pc:null,stream:null,audio:null,hold:false,connected:false});
+      showCall();startRing(true);
+      if(!B()||typeof B().tdlibIniciarChamada!=='function'){finish('Ponte de chamadas Telegram indisponível.');return;}
+      B().tdlibIniciarChamada(telegramUsername,!!video);
+      S.ringT=setTimeout(function(){if(S&&S.telegram&&S.status!=='connected'){hangup('Sem resposta');}},CFG.ringTimeoutMs);
+      return;
+    }
     if (window.RDCHAT_ZERO_P2P === true) { say('Chamadas ainda não estão disponíveis nesta versão do RdChat.'); return; }
     if(me && !(window.rdHasBirthDate && window.rdHasBirthDate())) { if(window.rdRequireBirthDate) window.rdRequireBirthDate('Chamadas'); return; }
     if(S){ maximize(); return; }
@@ -14424,11 +14441,25 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
     startRing(true);
   };
   async function acceptIncoming(){
-    if (window.RDCHAT_ZERO_P2P === true) return;
     var inc=incoming; if(!inc) return;
+    if (window.RDCHAT_ZERO_P2P === true && !inc.telegram) return;
     if(me && !(window.rdHasBirthDate && window.rdHasBirthDate())) { stopRing(); hideIncoming(); if(typeof sig==='function') sig(inc.from,'reject',{cid:inc.cid}); incoming=null; if(window.rdRequireBirthDate) window.rdRequireBirthDate('Atendimento de chamadas'); return; }
     stopRing(); hideIncoming();
-    if(S){ sig(inc.from,'busy',{cid:inc.cid}); return; }
+    if(S){
+      if(inc.telegram&&B()&&typeof B().tdlibRecusarChamada==='function')B().tdlibRecusarChamada(inc.callId);
+      else sig(inc.from,'busy',{cid:inc.cid});
+      return;
+    }
+    if(inc.telegram){
+      if(typeof MediaStream==='undefined'){say('O aparelho não disponibiliza o suporte de mídia necessário para chamadas.');B().tdlibRecusarChamada(inc.callId);incoming=null;return;}
+      S=newState(inc.cid,!!inc.video,new MediaStream());
+      S.telegram=true;S.callId=inc.callId;S.status='connecting';S.primary=norm(inc.from);
+      S.parts.set(S.primary,{email:S.primary,name:nameOf(S.primary),photo:photoOf(S.primary),pc:null,stream:null,audio:null,hold:false,connected:false});
+      incoming=null;showCall();refresh();
+      if(B()&&typeof B().tdlibAtenderChamada==='function')B().tdlibAtenderChamada(inc.callId,!!inc.video);
+      else finish('Ponte de chamadas Telegram indisponível.');
+      return;
+    }
     var stream; try{ stream=await getMedia(inc.video); }catch(e){ say('Permita o microfone'+(inc.video?' e a câmera':'')+' para atender.'); sig(inc.from,'reject',{cid:inc.cid}); return; }
     S=newState(inc.cid,inc.video,stream); S.status='connecting'; build(); showCall(); vadWatch('me',stream);
     var roster=inc.roster.filter(function(e){ return e&&norm(e)!==myEmail(); });
@@ -14436,8 +14467,8 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
     roster.forEach(function(e){ sig(norm(e),'join',{cid:inc.cid}); });
     S.primary=norm(inc.from); incoming=null; refresh();
   }
-  function declineIncoming(notify){ var inc=incoming; if(!inc) return; stopRing(); hideIncoming(); if(notify) sig(inc.from,'reject',{cid:inc.cid}); incoming=null; }
-  function hangup(reason){ if(!S) return; var s=S; s.parts.forEach(function(p){ sig(p.email,'leave',{cid:s.cid}); }); s.invited.forEach(function(v,e){ sig(e,'cancel',{cid:s.cid}); }); finish(reason); }
+  function declineIncoming(notify){ var inc=incoming; if(!inc) return; stopRing(); hideIncoming(); if(inc.telegram){if(B()&&typeof B().tdlibRecusarChamada==='function')B().tdlibRecusarChamada(inc.callId);}else if(notify) sig(inc.from,'reject',{cid:inc.cid}); incoming=null; }
+  function hangup(reason){ if(!S) return; var s=S; if(s.telegram){if(s.callId&&B()&&typeof B().tdlibEncerrarChamada==='function')B().tdlibEncerrarChamada(s.callId);finish(reason);return;} s.parts.forEach(function(p){ sig(p.email,'leave',{cid:s.cid}); }); s.invited.forEach(function(v,e){ sig(e,'cancel',{cid:s.cid}); }); finish(reason); }
   function finish(reason,silent){
     if(!S) return; var s=S; if(s.ended) return; s.ended=true;
     clearTimeout(s.ringT); clearInterval(s.timer); clearInterval(s.statusT); stopRing();
@@ -14446,7 +14477,7 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
     vadStop();
     var dur=s.startedAt?Date.now()-s.startedAt:0;
     flushDraft('call-ended');
-    S=null; hideCall(); lastMode=''; broadcastStatus();
+    S=null; hideCall(); lastMode=''; if(!s.telegram)broadcastStatus();
     if(reason) say(reason+(dur?' · '+fmtTime(dur):''));
     if(missed.length) setTimeout(processMissed,900);
   }
@@ -14471,6 +14502,64 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
       case 'hold': { if(!S||S.cid!==d.cid) return; var h=S.parts.get(email); if(h){ h.hold=!!d.on; refresh(); } break; }
     }
   }
+  window.RdChatReceiveTelegramCall=function(raw){
+    var d;try{d=typeof raw==='string'?JSON.parse(raw):(raw||{});}catch(_){return;}
+    if(!d||!d.event)return;
+    if(d.event==='incoming'){
+      (async function(){
+        var email='';
+        try{email=await window.RdChatRouter.emailForTelegramUsername(d.username||'');}catch(_){}
+        if(!email){if(B()&&typeof B().tdlibRecusarChamada==='function')B().tdlibRecusarChamada(Number(d.callId));say('Chamada recebida de uma conta Telegram que não está nos seus contatos RdChat.');return;}
+        if(S||incoming){if(B()&&typeof B().tdlibRecusarChamada==='function')B().tdlibRecusarChamada(Number(d.callId));return;}
+        incoming={cid:newId(),from:norm(email),video:!!d.video,roster:[norm(email)],telegram:true,callId:Number(d.callId)};
+        showIncoming();
+      })();
+      return;
+    }
+    if(d.event==='error'){
+      if(incoming&&Number(incoming.callId)===Number(d.callId)){stopRing();hideIncoming();incoming=null;}
+      if(S&&S.telegram&&(!d.callId||!S.callId||Number(S.callId)===Number(d.callId)))finish(String(d.message||'Falha na chamada.'));
+      else if(d.message)say(String(d.message));
+      return;
+    }
+    if(d.event==='outgoing'||d.event==='ringing'||d.event==='connecting'||d.event==='connected'){
+      if(!S||!S.telegram)return;
+      if(d.callId)S.callId=Number(d.callId);
+      if(d.event==='connecting'){S.status='connecting';stopRing();refresh();}
+      else if(d.event==='connected'){S.invited.clear();S.status='connected';markConnected();}
+      else if(d.event==='ringing'){S.status='calling';refresh();}
+      return;
+    }
+    if(d.event==='ended'){
+      if(incoming&&Number(incoming.callId)===Number(d.callId)){stopRing();hideIncoming();incoming=null;return;}
+      if(S&&S.telegram&&(!d.callId||Number(S.callId)===Number(d.callId)))finish('Chamada encerrada.');
+    }
+  };
+  window.RdChatReceiveTelegramCallFrame=function(raw){
+    if(!S||!S.telegram)return;
+    var d;try{d=typeof raw==='string'?JSON.parse(raw):(raw||{});}catch(_){return;}
+    var canvas=$('rdcTelegramRemoteFrame');if(!canvas||!d.data)return;
+    var w=Math.max(1,Math.min(1280,Number(d.width)||0)),h=Math.max(1,Math.min(1280,Number(d.height)||0));
+    if(!w||!h)return;
+    var binary;try{binary=atob(d.data);}catch(_){return;}
+    var ySize=w*h,uvSize=Math.ceil(w/2)*Math.ceil(h/2);
+    if(binary.length<ySize+uvSize*2)return;
+    if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}
+    var ctx=canvas.getContext('2d');if(!ctx)return;
+    var image=ctx.createImageData(w,h),out=image.data,uvW=Math.ceil(w/2);
+    for(var py=0;py<h;py++){
+      for(var px=0;px<w;px++){
+        var i=py*w+px,uv=(py>>1)*uvW+(px>>1);
+        var yy=binary.charCodeAt(i),u=binary.charCodeAt(ySize+uv)-128,v=binary.charCodeAt(ySize+uvSize+uv)-128;
+        var yv=Math.max(0,yy-16),base=i*4;
+        out[base]=Math.max(0,Math.min(255,(298*yv+409*v+128)>>8));
+        out[base+1]=Math.max(0,Math.min(255,(298*yv-100*u-208*v+128)>>8));
+        out[base+2]=Math.max(0,Math.min(255,(298*yv+516*u+128)>>8));
+        out[base+3]=255;
+      }
+    }
+    ctx.putImageData(image,0,0);
+  };
   window.RdChatReceiveCallSignal=function(email,signal){
     try{ if(signal&&signal.t==='rdcall') onSignal(norm(email),signal); }
     catch(error){ console.warn('RdChat: sinalização de chamada recebida inválida.',error); }
@@ -14486,9 +14575,14 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
 
   /* ============ Controles ============ */
   function toggleMute(){ if(!S) return; S.muted=!S.muted; applyMute(); refresh(); }
-  function applyMute(){ if(!S) return; var off=S.muted||S.hold; S.local.getAudioTracks().forEach(function(t){ t.enabled=!off; }); }
+  function applyMute(){ if(!S) return; var off=S.muted||S.hold; if(S.telegram){if(S.callId&&B()&&typeof B().tdlibMutarChamada==='function')B().tdlibMutarChamada(S.callId,off);return;} S.local.getAudioTracks().forEach(function(t){ t.enabled=!off; }); }
   async function toggleCamera(){
     if(!S) return;
+    if(S.telegram){
+      S.cam=!S.cam;S.video=S.video||S.cam;
+      if(S.callId&&B()&&typeof B().tdlibCameraChamada==='function')B().tdlibCameraChamada(S.callId,S.cam);
+      refresh();return;
+    }
     var vt=S.local.getVideoTracks()[0];
     if(!vt){
       try{ var vs=await getMedia(true); var nt=vs.getVideoTracks()[0]; vs.getAudioTracks().forEach(function(t){ t.stop(); }); S.local.addTrack(nt); S.parts.forEach(function(p){ if(p.tracksAdded){ try{ p.pc.addTrack(nt,S.local); }catch(_){} } }); S.cam=true; S.video=true; }
@@ -14499,7 +14593,7 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
   function toggleSpeaker(){ if(!S) return; S.speaker=!S.speaker; try{ if(window.AndroidBridge&&typeof AndroidBridge.setSpeakerphoneOn==='function') AndroidBridge.setSpeakerphoneOn(S.speaker); }catch(_){} refresh(); }
   function toggleHold(){
     if(!S) return; S.hold=!S.hold; applyMute();
-    S.parts.forEach(function(p){ if(p.audio) p.audio.muted=S.hold; sig(p.email,'hold',{cid:S.cid,on:S.hold}); });
+    if(!S.telegram)S.parts.forEach(function(p){ if(p.audio) p.audio.muted=S.hold; sig(p.email,'hold',{cid:S.cid,on:S.hold}); });
     refresh();
   }
   function minimize(){ if(!S) return; S.minimized=true; ui.root.classList.remove('show'); ui.pip.classList.add('show'); refresh(); }
@@ -14600,10 +14694,11 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
     $('rdcStatus').textContent=st;
     if(!S.startedAt){ var a=$('rdcTimer'); if(a) a.textContent=S.status==='calling'?'Chamando':'Conectando'; }
     /* mídia principal: vídeo remoto (se houver) ou foto enquadrada com object-fit: cover */
-    var media=$('rdcMedia'), rv=remoteVideoPart(), key=rv?('v:'+rv.email):('p:'+(photo?photo.length:0)+':'+name);
+    var media=$('rdcMedia'), rv=remoteVideoPart(), key=S.telegram?('tg:'+S.callId):(rv?('v:'+rv.email):('p:'+(photo?photo.length:0)+':'+name));
     if(media.__k!==key){
       media.__k=key; media.innerHTML='';
-      if(rv){ var v=document.createElement('video'); v.autoplay=true; v.playsInline=true; v.muted=true; v.srcObject=new MediaStream(rv.stream.getVideoTracks()); media.appendChild(v); pl(v); }
+      if(S.telegram){var canvas=document.createElement('canvas');canvas.id='rdcTelegramRemoteFrame';canvas.className='rdc-telegram-frame';canvas.width=640;canvas.height=480;media.appendChild(canvas);}
+      else if(rv){ var v=document.createElement('video'); v.autoplay=true; v.playsInline=true; v.muted=true; v.srcObject=new MediaStream(rv.stream.getVideoTracks()); media.appendChild(v); pl(v); }
       else { var box=document.createElement('div'); box.className='rdc-av'; setAvatar(box,photo,name); media.appendChild(box); }
     }
     var lv=$('rdcLocal'), vt=S.local.getVideoTracks()[0], showLocal=!!(vt&&S.cam);
@@ -14620,7 +14715,7 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
     var h=$('rdcHold'); h.classList.toggle('on',S.hold); h.innerHTML=svg(S.hold?IC.play:IC.pause,22,2.2);
     /* bolha minimizada */
     setAvatar($('rdcPipAv'),photo,name); tick(); refreshSpeaking();
-    var md=modeOf(); if(md!==lastMode){ lastMode=md; broadcastStatus(); }
+    if(!S.telegram){var md=modeOf();if(md!==lastMode){lastMode=md;broadcastStatus();}}
   }
   function refreshSpeaking(){
     if(!ui) return;
@@ -17618,6 +17713,8 @@ var T=window.RdChatTdlib={ready:false,state:'idle',userId:'',username:'',phoneHi
   baixar:function(fileId){return new Promise(function(res,rej){if(!has('tdlibBaixarArquivo'))return rej(new Error('Ponte TDLib indisponível'));var id='f'+(++seq);pend[id]={res:res,rej:rej,fileId:String(fileId)};B().tdlibBaixarArquivo(String(fileId),id);setTimeout(function(){if(pend[id]){delete pend[id];rej(new Error('Tempo esgotado ao baixar do Telegram'))}},180000)})},
   onArquivo:function(reqId,dataUrl,ok,err){var p=pend[reqId];if(!p)return;delete pend[reqId];if(ok){var a=ackMap[p.fileId];if(a){ack(a);delete ackMap[p.fileId]}p.res(dataUrl)}else p.rej(new Error(err||'Falha ao baixar'))},
   onEnviado:function(msgId,ok,err){var w=sendWait[msgId];if(!w)return;delete sendWait[msgId];ok?w.res(true):w.rej(new Error(err||'Falha no envio'))},
+  onCallEvent:function(j){try{if(typeof window.RdChatReceiveTelegramCall==='function')window.RdChatReceiveTelegramCall(j)}catch(e){console.warn('RdChat TDLib: evento de chamada inválido',e)}},
+  onCallFrame:function(j){try{if(typeof window.RdChatReceiveTelegramCallFrame==='function')window.RdChatReceiveTelegramCallFrame(j)}catch(e){console.warn('RdChat TDLib: quadro de vídeo inválido',e)}},
   onMessage:function(j){try{var d=typeof j==='string'?JSON.parse(j):j;var tx=String(d.text||'');if(tx.indexOf('RDC1')!==0)return;
       var env=JSON.parse(tx.slice(4));var me=RD().me&&RD().me();if(!me||!env||!env.id)return;
       var remote=Object.assign({},env,{toEmail:me.email,toEmails:[me.email],transport:'tdlib'});
@@ -17883,6 +17980,26 @@ function envelope(m,msg,me){var e={id:msg.id,kind:msg.kind,ts:msg.ts,fromEmail:m
   if(msg.viewOnce)e.viewOnce=true;if(msg.caption)e.caption=msg.caption;if(msg.reply&&msg.reply.id)e.replyTo=msg.reply.id;
   if(m.isGroup){e.groupKey=m.key;e.groupName=m.name;e.participantEmails=[me.email].concat(m.members||[])}return 'RDC1'+JSON.stringify(e)}
 window.RdChatRouter={decidir:decidir,
+  telegramUsernameFor:async function(email){
+    var contact=RD().contactOf(email);
+    if(!contact) return '';
+    var info=await infoDe(contact);
+    return info.t==='COM_NUMERO'&&info.u?String(info.u).replace(/^@/,''):'';
+  },
+  emailForTelegramUsername:async function(username){
+    var target=String(username||'').replace(/^@/,'').toLowerCase();
+    if(!target) return '';
+    var keys=Object.keys(meta||{});
+    for(var i=0;i<keys.length;i++){
+      var contact=RD().contactOf(keys[i]);
+      if(!contact) continue;
+      try{
+        var info=await infoDe(contact);
+        if(info.t==='COM_NUMERO'&&String(info.u||'').replace(/^@/,'').toLowerCase()===target) return keys[i];
+      }catch(_){}
+    }
+    return '';
+  },
   tryTdlib:async function(m,msg){
     var r;try{r=await decidir(m)}catch(e){return false}if(r.via!=='TDLIB')return false;
     var me=RD().me();
