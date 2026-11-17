@@ -73,6 +73,8 @@ class MainActivity : AppCompatActivity() {
 
     private var pendingWebPermissionRequest: PermissionRequest? = null
     private var pendingCameraAction: String? = null
+    private var pendingTelegramCallAction: (() -> Unit)? = null
+    private var pendingTelegramCallPermissions: List<String> = emptyList()
 
     private var permissionDialogInFlight = false
     private var activePermissionSet: Set<String> = emptySet()
@@ -663,6 +665,32 @@ class MainActivity : AppCompatActivity() {
                 @JavascriptInterface
                 fun tdlibProcessarPushTelegram(payload: String) = telegramBridge.processarPushTelegram(payload)
 
+                @JavascriptInterface
+                fun tdlibIniciarChamada(username: String, video: Boolean) =
+                    this@MainActivity.requestCallPermissionsAndThen(video) {
+                        telegramBridge.tdlibIniciarChamada(username, video)
+                    }
+
+                @JavascriptInterface
+                fun tdlibAtenderChamada(callId: Int, video: Boolean) =
+                    this@MainActivity.requestCallPermissionsAndThen(video) {
+                        telegramBridge.tdlibAtenderChamada(callId)
+                    }
+
+                @JavascriptInterface
+                fun tdlibRecusarChamada(callId: Int) = telegramBridge.tdlibRecusarChamada(callId)
+
+                @JavascriptInterface
+                fun tdlibEncerrarChamada(callId: Int) = telegramBridge.tdlibEncerrarChamada(callId)
+
+                @JavascriptInterface
+                fun tdlibMutarChamada(callId: Int, muted: Boolean) =
+                    telegramBridge.tdlibMutarChamada(callId, muted)
+
+                @JavascriptInterface
+                fun tdlibCameraChamada(callId: Int, enabled: Boolean) =
+                    telegramBridge.tdlibCameraChamada(callId, enabled)
+
             }, "AndroidBridge")
 
         MyFirebaseMessagingService.tokenListener = { token -> deliverNativeFcmToken(token) }
@@ -930,6 +958,17 @@ class MainActivity : AppCompatActivity() {
         launchNextPermissionRequest()
     }
 
+    private fun requestCallPermissionsAndThen(video: Boolean, action: () -> Unit) {
+        runOnUiThread {
+            pendingTelegramCallPermissions = buildList {
+                add(Manifest.permission.RECORD_AUDIO)
+                if (video) add(Manifest.permission.CAMERA)
+            }
+            pendingTelegramCallAction = action
+            requestRuntimePermissions(pendingTelegramCallPermissions)
+        }
+    }
+
     private fun launchNextPermissionRequest() {
 
         if (permissionDialogInFlight) return
@@ -994,6 +1033,20 @@ class MainActivity : AppCompatActivity() {
                     pendingWebPermissionRequest = null
                     safeDeny(webRequest)
                 }
+            }
+        }
+
+        val callAction = pendingTelegramCallAction
+        if (callAction != null) {
+            val missing = pendingTelegramCallPermissions.filterNot { hasPermission(it) }
+            if (missing.isEmpty()) {
+                pendingTelegramCallAction = null
+                pendingTelegramCallPermissions = emptyList()
+                callAction.invoke()
+            } else if (missing.none { it in queuedPermissions || it in activePermissionSet }) {
+                pendingTelegramCallAction = null
+                pendingTelegramCallPermissions = emptyList()
+                showMessage("Permita o microfone" + (Manifest.permission.CAMERA in missing && pendingTelegramCallPermissions.isNotEmpty() ? " e a câmera" : "") + " para usar chamadas.")
             }
         }
 
