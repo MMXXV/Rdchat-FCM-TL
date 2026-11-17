@@ -61,13 +61,80 @@ val prepareRdchatAssets = tasks.register("prepareRdchatAssets") {
         )
         replaceExactlyOnce(
             """<input id="rdTgPhone" type="password" inputmode="tel" placeholder="+55 11 99999-9999"""",
-            """<span class="rd-login-field-icon rd-icon-phone" aria-hidden="true"></span><input id="rdTgPhone" type="tel" inputmode="tel" placeholder="Digite seu telefone"""",
+            """<span class="rd-login-field-icon rd-icon-phone" aria-hidden="true"></span><input id="rdTgPhone" type="tel" inputmode="numeric" placeholder="Digite seu telefone"""",
             "campo de telefone e ícone"
         )
         replaceExactlyOnce(
             """<label for="rdTgPhone">Número de telefone</label>""",
             """<label for="rdTgPhone">Telefone</label>""",
             "rótulo do telefone"
+        )
+
+        replaceExactlyOnce(
+            """phone.addEventListener('input',function(){
+    this.value=this.value.replace(/[^\d+()\s.-]/g,'');
+  });""",
+            """phone.addEventListener('input',function(){
+    var digits=this.value.replace(/\D/g,'');
+    if((digits.length===12||digits.length===13)&&digits.indexOf('55')===0)digits=digits.slice(2);
+    digits=digits.slice(0,11);
+    var ddd=digits.slice(0,2),rest=digits.slice(2);
+    if(digits.length<=2){this.value=digits;return}
+    if(rest.length<=4)this.value='('+ddd+') '+rest;
+    else if(digits.length<=10)this.value='('+ddd+') '+rest.slice(0,4)+'-'+rest.slice(4);
+    else this.value='('+ddd+') '+rest.slice(0,5)+'-'+rest.slice(5);
+  });""",
+            "máscara brasileira DDD + número"
+        )
+
+        replaceExactlyOnce(
+            """function startTelegramPhoneLogin(){
+  if(!validatePhoneModeIdentity())return;
+  var phone=String($('rdTgPhone').value||'').trim();
+  var digits=phone.replace(/\D/g,'');
+  if(digits.length<8||digits.length>15||phone.replace(/[^\d+]/g,'').charAt(0)!=='+'){
+    tt('Digite o telefone com código do país. Exemplo: +55 11 99999-9999.');
+    $('rdTgPhone').focus();return;
+  }
+  phoneRequested=true;
+  markPhoneRequestStarted();
+  if(!T.iniciarLogin(phone)){
+    phoneRequested=false;
+    markPhoneRequestFinished();
+    render();
+    return;
+  }
+  render();
+}""",
+            """function startTelegramPhoneLogin(){
+  if(!validatePhoneModeIdentity())return;
+  var digits=String($('rdTgPhone').value||'').replace(/\D/g,'');
+  if((digits.length===12||digits.length===13)&&digits.indexOf('55')===0)digits=digits.slice(2);
+  if(!/^[1-9][1-9][0-9]{8,9}$/.test(digits)){
+    tt('Digite DDD + número com 10 ou 11 dígitos. O +55 será adicionado automaticamente.');
+    $('rdTgPhone').focus();return;
+  }
+  var phone='+55'+digits;
+  phoneRequested=true;
+  markPhoneRequestStarted();
+  try{
+    if(!T.iniciarLogin(phone)){
+      phoneRequested=false;
+      markPhoneRequestFinished();
+      render();
+      return;
+    }
+  }catch(error){
+    phoneRequested=false;
+    markPhoneRequestFinished();
+    tt('Não foi possível iniciar o Telegram. Tente novamente.');
+    console.error('RdChat TDLib: falha ao iniciar autenticação',error);
+    render();
+    return;
+  }
+  render();
+}""",
+            "envio automático do DDI +55 ao TDLib"
         )
 
         replaceExactlyOnce(
@@ -175,7 +242,9 @@ val prepareRdchatAssets = tasks.register("prepareRdchatAssets") {
 
         replaceExactlyOnce("</head>", "$referenceCss\n</head>", "inserção do estilo da referência")
         require(html.contains("id=\"rdTgPhone\" type=\"tel\"") &&
+            html.contains("inputmode=\"numeric\"") &&
             html.contains("placeholder=\"Digite seu telefone\"") &&
+            html.contains("O +55 será adicionado automaticamente") &&
             html.contains("rdchat-login-number-reference-v1")) {
             "O HTML gerado não contém todas as alterações visuais do modo Com número."
         }
