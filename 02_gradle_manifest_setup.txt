@@ -1,0 +1,32 @@
+RDCHAT V1.0.6 – CONFIGURAÇÃO ANDROID
+====================================
+build.gradle.kts (app)
+  plugins { id("com.google.gms.google-services") }
+  dependencies {
+      implementation(platform("com.google.firebase:firebase-bom:33.5.1"))
+      implementation("com.google.firebase:firebase-messaging-ktx")
+      implementation("androidx.core:core-ktx:1.13.1")
+      implementation(files("libs/tdlib.aar"))   // TDLib compilada p/ Android (td/example/android do repositório oficial)
+  }
+  // TelegramManager.API_ID / API_HASH: já preenchidos (credenciais do my.telegram.org)
+
+AndroidManifest.xml
+  <uses-permission android:name="android.permission.INTERNET"/>
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+  <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+  <uses-permission android:name="android.permission.CAMERA"/>
+  <!-- NÃO declare READ_CONTACTS (a agenda nunca é lida) -->
+  <application android:name=".RdApp" ...>
+      <service android:name=".RdFirebaseMessagingService" android:exported="false">
+          <intent-filter><action android:name="com.google.firebase.MESSAGING_EVENT"/></intent-filter>
+      </service>
+  </application>
+
+Servidor de push (Worker/Cloud Function) – payload FCM:
+  { "message": { "token": "<fcmToken>",
+      "data": { "type":"msg", "id":"...", "room":"...", "fromName":"Ana", "preview":"oi" },
+      "android": { "priority": "HIGH" } } }          // SEM o campo "notification"
+  Para acordar a TDLib de um destinatário COM_NUMERO: data.type = "tdlib_wake".
+
+Proguard/R8: -keep class org.drinkless.tdlib.** { *; }  e  -keep class com.rdchat.app.WebAppInterface { *; }
+Firestore: publique o arquivo firestore.rules (firebase deploy --only firestore:rules).
