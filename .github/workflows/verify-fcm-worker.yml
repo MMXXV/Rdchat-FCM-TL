@@ -1,4 +1,4 @@
-name: Verify RdChat FCM Worker and Login HTML
+name: Verify RdChat Worker, Login, Android Contract and Firestore Rules
 
 on:
   push:
@@ -6,13 +6,27 @@ on:
     paths:
       - "rdchat-fcm-worker/**"
       - "app/src/main/assets/index.html"
-      - "scripts/check-inline-js.mjs"
+      - "app/src/main/AndroidManifest.xml"
+      - "app/src/main/res/**/*.xml"
+      - "app/google-services.json"
+      - ".firebaserc"
+      - "firebase.json"
+      - "firestore.rules"
+      - "firestore.indexes.json"
+      - "scripts/**"
       - ".github/workflows/verify-fcm-worker.yml"
   pull_request:
     paths:
       - "rdchat-fcm-worker/**"
       - "app/src/main/assets/index.html"
-      - "scripts/check-inline-js.mjs"
+      - "app/src/main/AndroidManifest.xml"
+      - "app/src/main/res/**/*.xml"
+      - "app/google-services.json"
+      - ".firebaserc"
+      - "firebase.json"
+      - "firestore.rules"
+      - "firestore.indexes.json"
+      - "scripts/**"
       - ".github/workflows/verify-fcm-worker.yml"
   workflow_dispatch:
 
@@ -20,15 +34,33 @@ permissions:
   contents: read
 
 jobs:
-  worker:
+  source-contracts:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Verificar sintaxe JavaScript do Worker
+      - name: Validate all JSON and Android XML files
+        run: python scripts/check-structured-config.py
+      - name: Validate static login HTML and every inline JavaScript block
+        run: node scripts/check-inline-js.mjs
+      - name: Validate Firebase, Android and Worker cross-file contracts
+        run: node scripts/check-project-contract.mjs
+      - name: Verify Worker JavaScript syntax
         working-directory: rdchat-fcm-worker
         run: npm run check
-      - name: Verificar sintaxe dos scripts inline e layout do login
-        run: node scripts/check-inline-js.mjs
+
+  firestore-rules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Compile Firestore rules in the official local emulator
+        run: npx --yes firebase-tools@15.36.0 emulators:exec --only firestore --project demo-rdchat-rules "node -e \"process.exit(0)\""
