@@ -14904,6 +14904,8 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
     }catch(_){}
     if(!hasActiveProfile) return true; // O token permanece salvo nativamente e será reenviado após o login.
     try{ if(window.RdChatFirebase&&typeof window.RdChatFirebase.registerPushToken==='function') await window.RdChatFirebase.registerPushToken(value); }catch(e){ console.warn('RdChat: não foi possível registrar token FCM no perfil Firebase.',e); }
+    // No Modo B, o mesmo token FCM também é registrado no Telegram/TDLib.
+    try{ if(me && me.accountType==='COM_NUMERO' && window.AndroidBridge && typeof window.AndroidBridge.tdlibRegistrarTokenFcm==='function') window.AndroidBridge.tdlibRegistrarTokenFcm(value); }catch(e){ console.warn('RdChat: registro FCM da conta Telegram pendente.',e); }
     try{ if(typeof broadcastHi==='function') broadcastHi(); }catch(_){}
     return true;
   };
@@ -14912,6 +14914,8 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
   window.onFCMToken=window.RdChatFirebaseNativeFcmToken;
   window.onFCMMessageReceived=function(payload){
     if(!payload||typeof payload!=='object') return;
+    // Push nativo do Telegram: entregar o payload original ao ProcessPushNotification da TDLib.
+    try{ if(payload.p && window.AndroidBridge && typeof window.AndroidBridge.tdlibProcessarPushTelegram==='function') window.AndroidBridge.tdlibProcessarPushTelegram(JSON.stringify(payload)); }catch(e){ console.warn('RdChat: falha ao encaminhar push Telegram para TDLib.',e); }
     try{ window.dispatchEvent(new CustomEvent('rdchat:fcm', {detail:payload})); }catch(_){}
     if(String(payload.type || '').indexOf('rdchat_') === 0 && window.RdChatFirebase && typeof window.RdChatFirebase.syncPendingMessages === 'function'){
       window.RdChatFirebase.syncPendingMessages().catch(function(error){ console.warn('RdChat: sincronizaÃ§Ã£o do Firestore apÃ³s FCM falhou.',error); });
