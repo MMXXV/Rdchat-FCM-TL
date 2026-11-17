@@ -75,7 +75,12 @@ check("manifest_uses_resizable_keyboard", manifest.includes('android:windowSoftI
 check("gradle_uses_firebase_messaging", gradle.includes("libs.firebase.messaging"));
 check("gradle_uses_java_17", gradle.includes("JavaVersion.VERSION_17"));
 check("gradle_targets_sdk_37", gradle.includes("targetSdk = 37"));
-check("native_bridge_has_camera_mic_method", main.includes("fun requestCameraAndMicrophonePermissions()") && html.includes("requestCameraAndMicrophonePermissions"));
+const jsBridgeMethods = new Set([...html.matchAll(/(?:window\\.AndroidBridge|AndroidBridge|B\\(\\))\\.([A-Za-z0-9_]+)\\s*\\(/g)].map((match) => match[1]));
+const nativeJavascriptMethods = new Set([...main.matchAll(/@JavascriptInterface\\s+fun\\s+([A-Za-z0-9_]+)\\s*\\(/g)].map((match) => match[1]));
+const missingNativeBridgeMethods = [...jsBridgeMethods].filter((method) => !nativeJavascriptMethods.has(method));
+check("native_bridge_has_camera_mic_method", nativeJavascriptMethods.has("requestCameraAndMicrophonePermissions") && html.includes("requestCameraAndMicrophonePermissions"));
+check("all_direct_javascript_bridge_calls_exist_natively", missingNativeBridgeMethods.length === 0, missingNativeBridgeMethods.join(", "));
+check("native_bridge_implements_text_share", nativeJavascriptMethods.has("shareText") && html.includes("bridge.shareText(payload)"));
 check("native_fcm_service_exists", fcmService.includes("FirebaseMessagingService"));
 check("worker_has_syntax_check_script", typeof workerPackage.scripts?.check === "string");
 check("no_open_all_firestore_rules", !rules.includes("allow read, write: if true") && !rules.includes("allow write: if true"));
