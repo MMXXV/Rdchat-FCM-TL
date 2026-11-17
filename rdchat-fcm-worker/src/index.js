@@ -845,9 +845,7 @@ async function cleanupExpiredTelegramMedia(env) {
           try {
             await firestoreRequest(env, '/messageInbox/' + encodeURIComponent(recipientUid) + '/items/' + encodeURIComponent(messageIdField + '_' + senderUid), { method: 'DELETE' });
           } catch (deleteError) {
-            if (!(deleteError instanceof HttpError && deleteError.status === 404)) {
-              console.warn('RDCHAT_MEDIA_INBOX_CLEANUP_FAILED', String(deleteError.message || deleteError));
-            }
+            if (!(deleteError instanceof HttpError && deleteError.status === 404)) throw deleteError;
           }
         }
       }
