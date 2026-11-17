@@ -8966,7 +8966,7 @@ window.openAvatarPicker = openAvatarPicker;
   // CORREÇÃO CRÍTICA: SALVAR PERFIL
   function saveProfile() {
     try {
-      localStorage.setItem('rdchat_profile', JSON.stringify({ name: me.name, login: me.login || '', email: me.email, code: normalizeContactCode(me.code), birthDate: typeof me.birthDate === 'string' ? me.birthDate : null, birthYear: Number(me.birthYear) || null, is_adult: typeof me.is_adult === 'boolean' ? me.is_adult : null, safetyRestricted: me.safetyRestricted === true, safetyStrikeCount: Math.max(0, Number(me.safetyStrikeCount)||0), vault: vaultRec }));
+      localStorage.setItem('rdchat_profile', JSON.stringify({ name: me.name, login: me.login || '', email: me.email, code: normalizeContactCode(me.code), accountType: me.accountType === 'COM_NUMERO' ? 'COM_NUMERO' : 'SEM_NUMERO', tgUserId: String(me.tgUserId || ''), tgUsername: String(me.tgUsername || ''), birthDate: typeof me.birthDate === 'string' ? me.birthDate : null, birthYear: Number(me.birthYear) || null, is_adult: typeof me.is_adult === 'boolean' ? me.is_adult : null, safetyRestricted: me.safetyRestricted === true, safetyStrikeCount: Math.max(0, Number(me.safetyStrikeCount)||0), vault: vaultRec }));
       if (me.email) localStorage.setItem('rdchat_device_identity_v1', normEmail(me.email));
     } catch (e) { console.error('Falha ao salvar perfil', e); }
     mirrorSaveSoon();
@@ -10638,7 +10638,7 @@ window.openAvatarPicker = openAvatarPicker;
       const localBirthDate = typeof p.birthDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(p.birthDate) ? p.birthDate : null;
       const currentAge = localBirthDate && typeof window.rdAgeFromISO === 'function' ? window.rdAgeFromISO(localBirthDate) : null;
       const localMinor = currentAge !== null ? currentAge < 18 : (p.is_adult === false);
-      me = { name: p.name, login: p.login || name.toLowerCase(), email: p.email, code: p.code || '', push: p.push || '', birthDate: localBirthDate, birthYear: localBirthDate ? Number(localBirthDate.slice(0,4)) : localBirthYear, is_adult: p.safetyRestricted === true ? false : (currentAge !== null ? currentAge >= 18 : (localMinor ? false : null)), safetyRestricted: p.safetyRestricted === true, safetyStrikeCount: Math.max(0, Number(p.safetyStrikeCount)||0) };
+      me = { accountType: p.accountType === 'COM_NUMERO' ? 'COM_NUMERO' : 'SEM_NUMERO', tgUserId: String(p.tgUserId || ''), tgUsername: String(p.tgUsername || ''), name: p.name, login: p.login || name.toLowerCase(), email: p.email, code: p.code || '', push: p.push || '', birthDate: localBirthDate, birthYear: localBirthDate ? Number(localBirthDate.slice(0,4)) : localBirthYear, is_adult: p.safetyRestricted === true ? false : (currentAge !== null ? currentAge >= 18 : (localMinor ? false : null)), safetyRestricted: p.safetyRestricted === true, safetyStrikeCount: Math.max(0, Number(p.safetyStrikeCount)||0) };
       if (!localStorage.getItem('rdchat_device_identity_v1')) localStorage.setItem('rdchat_device_identity_v1', normEmail(p.email));
       idb = await dbOpen(p.email);
       await startSession();
