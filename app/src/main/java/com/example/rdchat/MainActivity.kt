@@ -450,6 +450,18 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 @JavascriptInterface
+                fun requestCameraAndMicrophonePermissions() {
+                    runOnUiThread {
+                        requestRuntimePermissions(
+                            listOf(
+                                Manifest.permission.CAMERA,
+                                Manifest.permission.RECORD_AUDIO
+                            )
+                        )
+                    }
+                }
+
+                @JavascriptInterface
                 fun requestMicrophonePermission() {
                     runOnUiThread {
                         requestRuntimePermissions(listOf(Manifest.permission.RECORD_AUDIO))
