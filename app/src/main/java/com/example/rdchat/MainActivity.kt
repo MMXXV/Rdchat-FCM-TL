@@ -56,6 +56,7 @@ class MainActivity : AppCompatActivity() {
     private var nativeFcmPageReady = false
     private var pendingNativeFcmToken: String? = null
     private val pendingNativeFcmPayloads = mutableListOf<String>()
+    private var pendingNotificationPayload: String? = null
 
     companion object {
         private const val WORKER_DOMAIN = "rdchat.edersonrgames.workers.dev"
@@ -72,6 +73,8 @@ class MainActivity : AppCompatActivity() {
 
     private var pendingWebPermissionRequest: PermissionRequest? = null
     private var pendingCameraAction: String? = null
+    private var pendingTelegramCallAction: (() -> Unit)? = null
+    private var pendingTelegramCallPermissions: List<String> = emptyList()
 
     private var permissionDialogInFlight = false
     private var activePermissionSet: Set<String> = emptySet()
@@ -221,6 +224,8 @@ class MainActivity : AppCompatActivity() {
         val pending = (stored + pendingNativeFcmPayloads.toList()).takeLast(50)
         pendingNativeFcmPayloads.clear()
         pending.forEach { deliverNativeFcmPayload(it) }
+        pendingNotificationPayload?.let { payload -> pendingNotificationPayload = null; deliverNotificationPayload(payload) }
+        intent?.getStringExtra("rdchat_notification_payload")?.takeIf { it.isNotBlank() }?.let { payload -> deliverNotificationPayload(payload); intent?.removeExtra("rdchat_notification_payload") }
 
         val prefs = getSharedPreferences("rdchat_fcm", Context.MODE_PRIVATE)
         val waitingToken = pendingNativeFcmToken
@@ -239,6 +244,21 @@ class MainActivity : AppCompatActivity() {
                 .addOnFailureListener { error -> android.util.Log.e("RDCHAT_FCM", "Falha ao atualizar token.", error) }
         } catch (error: Exception) { android.util.Log.e("RDCHAT_FCM", "Falha ao consultar token.", error) }
     }
+    private fun deliverNotificationPayload(payload: String) {
+        val safe = try { JSONObject(payload).toString() } catch (_: Exception) { return }
+        runOnUiThread {
+            if (!::webView.isInitialized || !nativeFcmPageReady || !isTrustedAppPage()) { pendingNotificationPayload = safe; return@runOnUiThread }
+            val js = "if (typeof window.RdChatOpenConversationFromNotification === 'function') window.RdChatOpenConversationFromNotification(JSON.parse(${JSONObject.quote(safe)}));"
+            webView.evaluateJavascript(js, null)
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        intent.getStringExtra("rdchat_notification_payload")?.takeIf { it.isNotBlank() }?.let(::deliverNotificationPayload)
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -430,6 +450,18 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 @JavascriptInterface
+                fun requestCameraAndMicrophonePermissions() {
+                    runOnUiThread {
+                        requestRuntimePermissions(
+                            listOf(
+                                Manifest.permission.CAMERA,
+                                Manifest.permission.RECORD_AUDIO
+                            )
+                        )
+                    }
+                }
+
+                @JavascriptInterface
                 fun requestMicrophonePermission() {
                     runOnUiThread {
                         requestRuntimePermissions(listOf(Manifest.permission.RECORD_AUDIO))
@@ -461,6 +493,25 @@ class MainActivity : AppCompatActivity() {
                         }
                     } catch (_: Exception) {
                         ""
+                    }
+                }
+
+                @JavascriptInterface
+                fun shareText(text: String) {
+                    val payload = text.trim().take(100_000)
+                    if (payload.isBlank()) return
+                    runOnUiThread {
+                        if (!isTrustedAppPage()) return@runOnUiThread
+                        try {
+                            val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, payload)
+                            }
+                            startActivity(Intent.createChooser(sendIntent, "Compartilhar mensagens"))
+                        } catch (error: Exception) {
+                            android.util.Log.w("RDCHAT_SHARE", "Falha ao abrir o compartilhamento nativo.", error)
+                            showMessage("Não foi possível abrir o compartilhamento neste aparelho.")
+                        }
                     }
                 }
 
@@ -638,6 +689,38 @@ class MainActivity : AppCompatActivity() {
 
                 @JavascriptInterface
                 fun enviarViaTelegram(json: String) = telegramBridge.enviarViaTelegram(json)
+
+                @JavascriptInterface
+                fun tdlibRegistrarTokenFcm(token: String) = telegramBridge.registrarTokenFcm(token)
+
+                @JavascriptInterface
+                fun tdlibProcessarPushTelegram(payload: String) = telegramBridge.processarPushTelegram(payload)
+
+                @JavascriptInterface
+                fun tdlibIniciarChamada(username: String, video: Boolean) =
+                    this@MainActivity.requestCallPermissionsAndThen(video) {
+                        telegramBridge.tdlibIniciarChamada(username, video)
+                    }
+
+                @JavascriptInterface
+                fun tdlibAtenderChamada(callId: Int, video: Boolean) =
+                    this@MainActivity.requestCallPermissionsAndThen(video) {
+                        telegramBridge.tdlibAtenderChamada(callId)
+                    }
+
+                @JavascriptInterface
+                fun tdlibRecusarChamada(callId: Int) = telegramBridge.tdlibRecusarChamada(callId)
+
+                @JavascriptInterface
+                fun tdlibEncerrarChamada(callId: Int) = telegramBridge.tdlibEncerrarChamada(callId)
+
+                @JavascriptInterface
+                fun tdlibMutarChamada(callId: Int, muted: Boolean) =
+                    telegramBridge.tdlibMutarChamada(callId, muted)
+
+                @JavascriptInterface
+                fun tdlibCameraChamada(callId: Int, enabled: Boolean) =
+                    telegramBridge.tdlibCameraChamada(callId, enabled)
 
             }, "AndroidBridge")
 
@@ -906,6 +989,17 @@ class MainActivity : AppCompatActivity() {
         launchNextPermissionRequest()
     }
 
+    private fun requestCallPermissionsAndThen(video: Boolean, action: () -> Unit) {
+        runOnUiThread {
+            pendingTelegramCallPermissions = buildList {
+                add(Manifest.permission.RECORD_AUDIO)
+                if (video) add(Manifest.permission.CAMERA)
+            }
+            pendingTelegramCallAction = action
+            requestRuntimePermissions(pendingTelegramCallPermissions)
+        }
+    }
+
     private fun launchNextPermissionRequest() {
 
         if (permissionDialogInFlight) return
@@ -970,6 +1064,26 @@ class MainActivity : AppCompatActivity() {
                     pendingWebPermissionRequest = null
                     safeDeny(webRequest)
                 }
+            }
+        }
+
+        val callAction = pendingTelegramCallAction
+        if (callAction != null) {
+            val missing = pendingTelegramCallPermissions.filterNot { hasPermission(it) }
+            if (missing.isEmpty()) {
+                pendingTelegramCallAction = null
+                pendingTelegramCallPermissions = emptyList()
+                callAction.invoke()
+            } else if (missing.none { it in queuedPermissions || it in activePermissionSet }) {
+                val cameraWasRequired = Manifest.permission.CAMERA in pendingTelegramCallPermissions
+                pendingTelegramCallAction = null
+                pendingTelegramCallPermissions = emptyList()
+                val permissionMessage = if (cameraWasRequired) {
+                    "Permita o acesso ao microfone e à câmera para chamadas de vídeo."
+                } else {
+                    "Permita o acesso ao microfone para chamadas de voz."
+                }
+                showMessage(permissionMessage)
             }
         }
 

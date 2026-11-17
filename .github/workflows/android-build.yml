@@ -32,6 +32,12 @@ jobs:
         run: echo "497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7  gradle/wrapper/gradle-wrapper.jar" | sha256sum --check
       - name: Gradle Wrapper
         uses: gradle/actions/setup-gradle@v4
+      - name: Validate project JSON and XML
+        run: python scripts/check-structured-config.py
+      - name: Validate HTML login and inline JavaScript
+        run: node scripts/check-inline-js.mjs
+      - name: Validate Firebase and Android project contract
+        run: node scripts/check-project-contract.mjs
       - name: Verify Telegram API hash secret
         env:
           TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}

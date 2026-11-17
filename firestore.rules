@@ -35,18 +35,28 @@ service cloud.firestore {
         && request.resource.data.code == code
         && request.resource.data.uid == request.auth.uid
         && validAccount(request.resource.data.accountType)
+        && (!('profileMediaVersion' in request.resource.data) || (request.resource.data.profileMediaVersion is string && request.resource.data.profileMediaVersion.size() <= 100))
+        && (!('profileMediaType' in request.resource.data) || (request.resource.data.profileMediaType is string && request.resource.data.profileMediaType.size() <= 100))
+        && (!('profileMediaName' in request.resource.data) || (request.resource.data.profileMediaName is string && request.resource.data.profileMediaName.size() <= 100))
+        && (!('avatarData' in request.resource.data) || (request.resource.data.avatarData is string && request.resource.data.avatarData.size() <= 60000))
         && request.resource.data.keys().hasOnly([
           'uid', 'email', 'name', 'code', 'accountType', 'tgUsername',
-          'avatarData', 'avatarVersion', 'is_adult', 'updatedAt'
+          'avatarData', 'avatarVersion', 'profileMediaVersion', 'profileMediaType',
+          'profileMediaName', 'is_adult', 'updatedAt'
         ]);
       allow update: if signedIn()
         && resource.data.uid == request.auth.uid
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.code == code
         && validAccount(request.resource.data.accountType)
+        && (!('profileMediaVersion' in request.resource.data) || (request.resource.data.profileMediaVersion is string && request.resource.data.profileMediaVersion.size() <= 100))
+        && (!('profileMediaType' in request.resource.data) || (request.resource.data.profileMediaType is string && request.resource.data.profileMediaType.size() <= 100))
+        && (!('profileMediaName' in request.resource.data) || (request.resource.data.profileMediaName is string && request.resource.data.profileMediaName.size() <= 100))
+        && (!('avatarData' in request.resource.data) || (request.resource.data.avatarData is string && request.resource.data.avatarData.size() <= 60000))
         && request.resource.data.keys().hasOnly([
           'uid', 'email', 'name', 'code', 'accountType', 'tgUsername',
-          'avatarData', 'avatarVersion', 'is_adult', 'updatedAt'
+          'avatarData', 'avatarVersion', 'profileMediaVersion', 'profileMediaType',
+          'profileMediaName', 'is_adult', 'updatedAt'
         ]);
       allow delete: if signedIn() && resource.data.uid == request.auth.uid;
     }
