@@ -17718,7 +17718,13 @@ var T=window.RdChatTdlib={ready:false,state:'idle',userId:'',username:'',phoneHi
   onMessage:function(j){try{var d=typeof j==='string'?JSON.parse(j):j;var tx=String(d.text||'');if(tx.indexOf('RDC1')!==0)return;
       var env=JSON.parse(tx.slice(4));var me=RD().me&&RD().me();if(!me||!env||!env.id)return;
       var remote=Object.assign({},env,{toEmail:me.email,toEmails:[me.email],transport:'tdlib'});
-      if(d.fileId){remote.telegramMediaId='tdlib:'+d.fileId;ackMap[String(d.fileId)]={chatId:d.chatId,msgId:d.tgMessageId}}
+      if(d.fileId){
+        remote.telegramMediaId='tdlib:'+d.fileId;
+        remote.mediaName=String(d.fileName||env.name||'arquivo');
+        remote.mediaMime=String(d.mime||env.mime||'application/octet-stream');
+        remote.mediaSize=Number(d.size||env.size||0);
+        ackMap[String(d.fileId)]={chatId:d.chatId,msgId:d.tgMessageId};
+      }
       if(typeof window.RdChatReceiveFirebaseText==='function')window.RdChatReceiveFirebaseText(remote);if(!d.fileId)ack({chatId:d.chatId,msgId:d.tgMessageId})}catch(e){console.warn('RdChat TDLib: mensagem ignorada',e)}}
 };
 /* ================= Login: Modo A / Modo B ================= */
