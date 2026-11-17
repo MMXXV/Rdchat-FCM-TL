@@ -63,4 +63,15 @@ jobs:
           distribution: temurin
           java-version: "21"
       - name: Compile Firestore rules in the official local emulator
-        run: npx --yes firebase-tools@15.36.0 emulators:exec --only firestore --project demo-rdchat-rules "node -e \"process.exit(0)\""
+        run: npx --yes firebase-tools@15.36.0 emulators:exec --only firestore --project demo-rdchat-rules "node -e \\\"process.exit(0)\\\""
+
+  firebase-live-client-smoke:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Test live Firebase anonymous authentication and Firestore write rules
+        run: node scripts/check-firebase-client-smoke.mjs
