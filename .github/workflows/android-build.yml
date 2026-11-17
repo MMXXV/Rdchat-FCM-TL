@@ -54,8 +54,10 @@ jobs:
         run: |
           APK="app/build/outputs/apk/debug/app-debug.apk"
           test -s "$APK"
-          unzip -l "$APK" | grep -q 'lib/arm64-v8a/libtdjni.so'
-          unzip -l "$APK" | grep -q 'lib/x86_64/libtdjni.so'
+          for ABI in armeabi-v7a arm64-v8a x86 x86_64; do
+            unzip -l "$APK" | grep -q "lib/$ABI/libtdjni.so"
+            unzip -l "$APK" | grep -q "lib/$ABI/libntgcalls.so"
+          done
       - name: Upload universal debug APK
         uses: actions/upload-artifact@v4
         with:
