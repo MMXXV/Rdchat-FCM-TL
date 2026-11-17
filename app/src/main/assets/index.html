@@ -17720,8 +17720,8 @@ var T=window.RdChatTdlib={ready:false,state:'idle',userId:'',username:'',phoneHi
       var remote=Object.assign({},env,{toEmail:me.email,toEmails:[me.email],transport:'tdlib'});
       if(d.fileId){
         remote.telegramMediaId='tdlib:'+d.fileId;
-        remote.mediaName=String(d.fileName||env.name||'arquivo');
-        remote.mediaMime=String(d.mime||env.mime||'application/octet-stream');
+        remote.mediaName=String(env.name||d.fileName||'arquivo');
+        remote.mediaMime=String(env.mime||d.mime||'application/octet-stream');
         remote.mediaSize=Number(d.size||env.size||0);
         ackMap[String(d.fileId)]={chatId:d.chatId,msgId:d.tgMessageId};
       }
