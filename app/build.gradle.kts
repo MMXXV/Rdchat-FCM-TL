@@ -70,35 +70,41 @@ val prepareRdchatAssets = tasks.register("prepareRdchatAssets") {
             "rótulo do telefone"
         )
 
+        replaceExactlyOnce(
+            """else if(T.ready){submit.textContent=profile&&profile.email?'Entrar':'Criar conta e entrar';submit.disabled=false}""",
+            """else if(T.ready){submit.textContent='Entrar';submit.disabled=false}""",
+            "rótulo Entrar no modo Com número"
+        )
+
         val referenceCss = """
 <style id="rdchat-login-number-reference-v1">
 /* Réplica do formulário Com número enviado como referência. O modo A não recebe estes estilos. */
-#screen-login.rd-login-phone-mode { background:#0d0f14 !important; color:#e2e7f1 !important; }
+#screen-login.rd-login-phone-mode { background:#101216 !important; color:#e2e7f1 !important; }
 #screen-login.rd-login-phone-mode .auth {
-  width:100% !important; max-width:342px !important; min-height:100% !important;
+  width:100% !important; max-width:362px !important; min-height:100% !important;
   box-sizing:border-box !important; padding:24px 24px max(24px,var(--safe-bottom)) !important;
   justify-content:safe center !important;
 }
-#screen-login.rd-login-phone-mode .hero { gap:30px !important; margin:0 0 30px !important; }
+#screen-login.rd-login-phone-mode .hero { gap:36px !important; margin:0 0 36px !important; }
 #screen-login.rd-login-phone-mode .hero-logo {
-  width:66px !important; height:66px !important; border-radius:21px !important;
+  width:72px !important; height:72px !important; margin-bottom:0 !important; border-radius:22px !important;
   background:#2f78f7 !important; color:#fff !important; box-shadow:none !important;
 }
-#screen-login.rd-login-phone-mode .hero-logo svg { width:34px !important; height:34px !important; stroke:#fff !important; }
+#screen-login.rd-login-phone-mode .hero-logo svg { width:36px !important; height:36px !important; stroke:#fff !important; }
 #screen-login.rd-login-phone-mode .rd-wordmark,
 #screen-login.rd-login-phone-mode .rd-wm-line { display:none !important; }
 #screen-login.rd-login-phone-mode .hero h1 {
-  margin:0 !important; color:#e2e7f1 !important; font-size:22px !important;
+  margin:0 !important; color:#c4cada !important; font-size:22px !important;
   line-height:1.2 !important; font-weight:750 !important; letter-spacing:-.45px !important;
   text-transform:none !important;
 }
 #screen-login.rd-login-phone-mode .rd-modes {
-  display:flex !important; gap:5px !important; padding:0 !important; margin:0 0 14px !important;
+  display:flex !important; gap:5px !important; padding:0 !important; margin:0 0 16px !important;
   border:0 !important; border-radius:0 !important; background:transparent !important;
   -webkit-backdrop-filter:none !important; backdrop-filter:none !important;
 }
 #screen-login.rd-login-phone-mode .rd-modes button {
-  flex:1 1 0 !important; min-width:0 !important; min-height:44px !important; padding:8px 8px !important;
+  flex:1 1 0 !important; min-width:0 !important; min-height:48px !important; padding:8px 8px !important;
   border:1px solid #303642 !important; border-radius:16px !important;
   background:#1d2028 !important; color:#d9dfeb !important;
   font-size:13px !important; font-weight:700 !important; white-space:nowrap !important;
@@ -106,16 +112,17 @@ val prepareRdchatAssets = tasks.register("prepareRdchatAssets") {
 #screen-login.rd-login-phone-mode .rd-modes button.on {
   border-color:#2f78f7 !important; background:#2f78f7 !important; color:#fff !important;
 }
-#screen-login.rd-login-phone-mode .field { margin:0 0 14px !important; }
+#screen-login.rd-login-phone-mode .field { margin:0 0 18px !important; }
+#screen-login.rd-login-phone-mode #rdTgPhoneF.field { margin-bottom:14px !important; }
 #screen-login.rd-login-phone-mode .field label {
-  display:block !important; margin:0 0 7px 1px !important; color:#c9d0df !important;
+  display:block !important; margin:0 0 8px 1px !important; color:#c9d0df !important;
   font-size:12px !important; line-height:1.2 !important; font-weight:700 !important;
   text-transform:uppercase !important;
 }
 #screen-login.rd-login-phone-mode .input-wrap {
   display:flex !important; align-items:center !important; gap:0 !important;
-  min-height:50px !important; padding:0 13px !important; border:1px solid #303642 !important;
-  border-radius:15px !important; background:#1e2129 !important; box-shadow:none !important;
+  min-height:54px !important; padding:0 16px !important; border:1px solid #2c2f39 !important;
+  border-radius:16px !important; background:#1d2028 !important; box-shadow:none !important;
 }
 #screen-login.rd-login-phone-mode .rd-login-field-icon {
   display:block !important; flex:0 0 24px !important; width:24px !important; height:24px !important;
@@ -136,19 +143,19 @@ val prepareRdchatAssets = tasks.register("prepareRdchatAssets") {
   mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 3.5 10 8 8 10c1.4 3.1 3.9 5.6 7 7l2-2 4.5 3c.7.5.9 1.2.6 2.1l-.7 1.6c-.4.8-1.3 1.2-2.2 1.1C9.6 21.6 2.4 14.4 1.2 4.8 1.1 3.9 1.5 3 2.3 2.6l1.6-.7c.9-.4 1.6-.2 2.1.6z'/%3E%3C/svg%3E") center/contain no-repeat !important;
 }
 #screen-login.rd-login-phone-mode input {
-  flex:1 1 auto !important; min-width:0 !important; height:48px !important; padding:0 !important;
+  flex:1 1 auto !important; min-width:0 !important; height:52px !important; padding:0 !important;
   border:0 !important; outline:0 !important; background:transparent !important;
   color:#e8edf7 !important; font-size:15px !important; box-shadow:none !important;
 }
-#screen-login.rd-login-phone-mode input::placeholder { color:#7a818e !important; opacity:1 !important; }
+#screen-login.rd-login-phone-mode input::placeholder { color:#7b808a !important; opacity:1 !important; }
 #screen-login.rd-login-phone-mode .rd-phone-eye { display:none !important; }
 #screen-login.rd-login-phone-mode .toggle-pass:not(.rd-phone-eye) {
   display:grid !important; flex:0 0 38px !important; width:38px !important; height:42px !important;
   color:#cbd3e2 !important;
 }
-#screen-login.rd-login-phone-mode .toggle-pass:not(.rd-phone-eye) svg { width:22px !important; height:22px !important; }
+#screen-login.rd-login-phone-mode .toggle-pass:not(.rd-phone-eye) svg { width:24px !important; height:24px !important; }
 #screen-login.rd-login-phone-mode #authSubmit {
-  min-height:50px !important; margin-top:8px !important; border:0 !important;
+  min-height:54px !important; margin-top:8px !important; border:0 !important;
   border-radius:999px !important; background:#2f78f7 !important; color:#fff !important;
   font-size:14px !important; font-weight:750 !important; box-shadow:none !important;
 }
@@ -160,8 +167,8 @@ val prepareRdchatAssets = tasks.register("prepareRdchatAssets") {
 #screen-login:not(.rd-login-phone-mode) .rd-login-field-icon { display:none !important; }
 @media (max-height:700px) {
   #screen-login.rd-login-phone-mode .auth { padding-top:16px !important; padding-bottom:16px !important; }
-  #screen-login.rd-login-phone-mode .hero { gap:16px !important; margin-bottom:18px !important; }
-  #screen-login.rd-login-phone-mode .field { margin-bottom:10px !important; }
+  #screen-login.rd-login-phone-mode .hero { gap:20px !important; margin-bottom:20px !important; }
+  #screen-login.rd-login-phone-mode .field { margin-bottom:12px !important; }
 }
 </style>
 """.trimIndent()
