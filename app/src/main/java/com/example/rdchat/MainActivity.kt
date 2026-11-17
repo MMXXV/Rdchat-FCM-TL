@@ -1047,7 +1047,12 @@ class MainActivity : AppCompatActivity() {
                 val cameraWasRequired = Manifest.permission.CAMERA in pendingTelegramCallPermissions
                 pendingTelegramCallAction = null
                 pendingTelegramCallPermissions = emptyList()
-                showMessage(if (cameraWasRequired) "Permita o acesso ao microfone e à câmera para chamadas de vídeo." else "Permita o acesso ao microfone para chamadas de voz.")
+                val permissionMessage = if (cameraWasRequired) {
+                    "Permita o acesso ao microfone e à câmera para chamadas de vídeo."
+                } else {
+                    "Permita o acesso ao microfone para chamadas de voz."
+                }
+                showMessage(permissionMessage)
             }
         }
 
