@@ -34,6 +34,8 @@ class TelegramManager(
         fun onMessage(json: String)
         fun onFile(reqId: String, dataUrl: String?, err: String?)
         fun onSent(msgId: String, ok: Boolean, err: String?)
+        fun onCallEvent(json: String)
+        fun onCallFrame(json: String)
     }
 
     companion object {
@@ -59,6 +61,7 @@ class TelegramManager(
     private val fileMimeTypes = ConcurrentHashMap<Int, String>()
     @Volatile private var pendingTelegramFcmToken: String? = null
     private val loginFinalized = AtomicBoolean(false)
+    @Volatile private var callEngine: TelegramCallEngine? = null
 
     private val updates = Client.ResultHandler { obj ->
         // Client.create() starts its receiver thread before returning. This lock ensures
@@ -67,6 +70,8 @@ class TelegramManager(
         when (obj) {
             is TdApi.UpdateAuthorizationState -> onAuth(obj.authorizationState)
             is TdApi.UpdateNewMessage -> onNewMessage(obj.message)
+            is TdApi.UpdateCall -> callEngine?.handleCall(obj.call)
+            is TdApi.UpdateNewCallSignalingData -> callEngine?.handleSignaling(obj)
         }
     }
 
@@ -116,6 +121,8 @@ class TelegramManager(
     /** Fecha o cliente local, preservando a autorização gravada no banco TDLib. */
     fun close() {
         ready = false
+        callEngine?.close()
+        callEngine = null
         synchronized(phoneLock) { pendingPhone = null }
         if (client != null) send(TdApi.Close())
     }
@@ -175,6 +182,19 @@ class TelegramManager(
             is TdApi.AuthorizationStateWaitPassword -> cb.onAuthState("aguardando_senha")
             is TdApi.AuthorizationStateReady -> {
                 ready = true
+                if (callEngine == null) {
+                    try {
+                        callEngine = TelegramCallEngine(
+                            ctx,
+                            { function, handler -> send(function, handler) },
+                            { payload -> cb.onCallEvent(payload) },
+                            { payload -> cb.onCallFrame(payload) }
+                        )
+                    } catch (error: Throwable) {
+                        Log.e(TAG, "Motor de chamadas Telegram não pôde ser carregado.", error)
+                        cb.onError("Chamadas Telegram não disponíveis neste aparelho: " + (error.message ?: "falha ao carregar o motor de mídia."))
+                    }
+                }
                 pendingTelegramFcmToken?.takeIf { it.isNotBlank() }?.let(::registerFcmDevice)
                 if (loginFinalized.compareAndSet(false, true)) afterLogin()
             }
@@ -358,6 +378,29 @@ class TelegramManager(
     }
 
     /** Mantém o token FCM também registrado no serviço de notificações do Telegram para contas do Modo B. */
+    fun iniciarChamada(username: String, video: Boolean) {
+        if (!ready) {
+            cb.onError("Entre na conta Telegram antes de iniciar uma chamada.")
+            return
+        }
+        val engine = callEngine
+        if (engine == null) {
+            cb.onError("O motor nativo de chamadas não está disponível neste aparelho.")
+            return
+        }
+        try { engine.startOutgoing(username, video) }
+        catch (error: Throwable) {
+            Log.e(TAG, "Falha ao iniciar chamada Telegram.", error)
+            cb.onError(error.message ?: "Não foi possível iniciar a chamada.")
+        }
+    }
+
+    fun atenderChamada(callId: Int) = callEngine?.accept(callId)
+    fun recusarChamada(callId: Int) = callEngine?.decline(callId)
+    fun encerrarChamada(callId: Int) = callEngine?.hangup(callId)
+    fun mutarChamada(callId: Int, muted: Boolean) = callEngine?.setMuted(callId, muted)
+    fun cameraChamada(callId: Int, enabled: Boolean) = callEngine?.setCameraEnabled(callId, enabled)
+
     fun registrarTokenFcm(token: String) {
         val value = token.trim()
         if (value.isBlank()) return
