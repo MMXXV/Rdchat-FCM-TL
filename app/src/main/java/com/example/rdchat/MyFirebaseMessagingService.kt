@@ -196,6 +196,10 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
 
         val launchIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("rdchat_notification_payload", JSONObject(data as Map<*, *>).toString())
+            putExtra("rdchat_room_id", data["roomId"].orEmpty())
+            putExtra("rdchat_message_id", data["messageId"] ?: data["id"].orEmpty())
+            putExtra("rdchat_sender_id", senderId)
         }
         val pendingIntent = launchIntent?.let {
             PendingIntent.getActivity(this, 0, it, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
