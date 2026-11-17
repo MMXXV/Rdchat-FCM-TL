@@ -99,9 +99,9 @@ Object.defineProperty(window, 'RDCHAT_ZERO_P2P', {
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="preconnect" href="https://esm.sh" crossorigin>
 <!-- Firebase SDK adicional: não substitui nem remove os módulos de comunicação da v140. -->
-<script src="https://www.gstatic.com/firebasejs/13.1.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/13.1.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/13.1.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/13.3.0/firebase-app-compat.js" onerror="window.__RDCHAT_FIREBASE_SDK_ERROR='firebase-app-compat.js';"></script>
+<script src="https://www.gstatic.com/firebasejs/13.3.0/firebase-auth-compat.js" onerror="window.__RDCHAT_FIREBASE_SDK_ERROR='firebase-auth-compat.js';"></script>
+<script src="https://www.gstatic.com/firebasejs/13.3.0/firebase-firestore-compat.js" onerror="window.__RDCHAT_FIREBASE_SDK_ERROR='firebase-firestore-compat.js';"></script>
 
 
 
@@ -3838,6 +3838,10 @@ body.booting #rdchat-startup-cover {
               <div class="rd-wm-line"></div>
               <h1>Bem-vindo ao RdChat</h1>
             </div>
+            <div class="rd-modes" id="rdModes" role="group" aria-label="Tipo de acesso">
+              <button type="button" data-m="A" class="on" aria-pressed="true">Usuário e senha</button>
+              <button type="button" data-m="B" aria-pressed="false">Com número</button>
+            </div>
             <div class="field">
               <label>Nome de usuário</label>
               <div class="input-wrap"><input type="text" id="regName" placeholder="Digite seu nome" autocomplete="username" autocapitalize="none" spellcheck="false" minlength="3" maxlength="32" enterkeyhint="next"></div>
@@ -3847,6 +3851,28 @@ body.booting #rdchat-startup-cover {
               <div class="input-wrap">
                 <input type="password" id="regPass" placeholder="Digite 4 números" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" autocomplete="new-password" enterkeyhint="go">
                 <button class="toggle-pass" onclick="togglePass('regPass', this)">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="field rd-tg-step" id="rdTgPhoneF" hidden>
+              <label for="rdTgPhone">Número de telefone</label>
+              <div class="input-wrap">
+                <input id="rdTgPhone" type="password" inputmode="tel" placeholder="+55 11 99999-9999" autocomplete="tel" autocapitalize="off" spellcheck="false" enterkeyhint="go">
+                <button type="button" class="toggle-pass rd-phone-eye" id="rdTgPhoneEye" aria-label="Mostrar número" title="Mostrar número" aria-controls="rdTgPhone">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="field rd-tg-step" id="rdTgCodeF" hidden>
+              <label for="rdTgCode">Código recebido do Telegram</label>
+              <div class="input-wrap"><input id="rdTgCode" type="text" inputmode="numeric" maxlength="8" autocomplete="one-time-code" placeholder="Código de confirmação" enterkeyhint="go"></div>
+            </div>
+            <div class="field rd-tg-step" id="rdTgPassF" hidden>
+              <label for="rdTgPass">Senha em duas etapas do Telegram</label>
+              <div class="input-wrap">
+                <input id="rdTgPass" type="password" autocomplete="current-password" placeholder="Senha do Telegram" enterkeyhint="go">
+                <button type="button" class="toggle-pass" id="rdTgPassEye" aria-label="Mostrar senha do Telegram" aria-controls="rdTgPass">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                 </button>
               </div>
@@ -11322,6 +11348,7 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
   const HEARTBEAT_MS = 300000; // 5 min: reduz consumo da cota gratuita
   const PRESENCE_TTL_MS = 480000; // 8 min: tolera atraso/hibernação breve
   let auth = null, fs = null, currentUid = '', initialized = false, initPromise = null;
+  let firebaseInitStage = 'não iniciado', firebaseInitError = null;
   let heartbeatTimer = null, fcmToken = '';
   const presenceWatchers = new Map();
   const textWatchers = new Map();
@@ -11330,6 +11357,21 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
   const codeNorm = value => String(value || '').replace(/[^0-9]/g, '').slice(0, 6);
   const codePathSafe = value => /^[0-9]{6}$/.test(codeNorm(value));
   const safeToast = message => { try { if (typeof toast === 'function') toast(message); } catch (_) {} };
+  const firebaseErrorMessage = error => {
+    const code = String(error && error.code || '').toLowerCase();
+    const message = String(error && (error.message || error.name) || '').slice(0, 160);
+    if (!window.firebase || !firebase.initializeApp || window.__RDCHAT_FIREBASE_SDK_ERROR) {
+      return 'SDK Firebase não carregou (' + String(window.__RDCHAT_FIREBASE_SDK_ERROR || 'verifique a rede do WebView') + ').';
+    }
+    if (code === 'auth/operation-not-allowed') return 'Autenticação anônima desativada no Console Firebase.';
+    if (code === 'auth/invalid-api-key') return 'A chave Web do Firebase foi rejeitada ou está restrita.';
+    if (code === 'auth/network-request-failed' || code === 'unavailable' || code === 'deadline-exceeded') return 'Falha de rede ao acessar os serviços Firebase.';
+    if (code === 'permission-denied') return 'Firestore recusou a gravação/leitura. Publique as regras desta versão.';
+    if (code === 'not-found') return 'Banco Firestore ou recurso solicitado não encontrado no projeto.';
+    if (code === 'failed-precondition') return 'Firestore exige configuração adicional (banco, índice ou estado do projeto).';
+    if (code === 'resource-exhausted') return 'Limite/cota do Firebase atingido.';
+    return message || code || 'erro sem código informado';
+  };
   const currentContacts = () => { try { return Array.isArray(contacts) ? contacts : []; } catch (_) { return []; } };
   const findContact = email => currentContacts().find(item => norm(item && item.email) === norm(email)) || null;
 
@@ -11337,28 +11379,67 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
     if (initialized) return true;
     if (initPromise) return initPromise;
     initPromise = (async () => {
-      if (!window.firebase || !firebase.initializeApp) throw new Error('SDK Firebase não carregou.');
-      if (!firebase.apps.length) firebase.initializeApp(CFG);
-      auth = firebase.auth(); fs = firebase.firestore();
-      try { await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); } catch (_) {}
-      if (!auth.currentUser) await auth.signInAnonymously();
-      currentUid = auth.currentUser.uid;
-      await registerOwnIdentity();
-      await attachKnownContacts();
-      initialized = true;
-      await syncPresenceWatchers();
-      await watchTextInbox();
-      // Mantém as conversas de texto dos contatos acompanhadas enquanto o WebView estiver ativo.
-      for (const contact of currentContacts().slice(0, 150)) {
-        if (contact && contact.email && contact.firebaseUid) {
-          try { await watchTextConversation(contact.email); } catch (error) { console.warn('RdChat: listener de texto pendente.', error); }
+      try {
+        firebaseInitStage = 'carregar SDK Firebase';
+        if (!window.firebase || !firebase.initializeApp || !firebase.auth || !firebase.firestore) {
+          throw new Error('SDK Firebase compat incompleto. ' + String(window.__RDCHAT_FIREBASE_SDK_ERROR || 'Verifique a rede e as URLs CDN.'));
         }
+        firebaseInitStage = 'configurar projeto Firebase';
+        if (!firebase.apps.length) firebase.initializeApp(CFG);
+        auth = firebase.auth();
+        fs = firebase.firestore();
+
+        // A persistência local é preferida, mas um bloqueio do WebView não deve impedir o login anônimo.
+        try { await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); }
+        catch (persistenceError) { console.warn('RdChat Firebase: persistência local indisponível; usando a sessão atual.', persistenceError); }
+
+        firebaseInitStage = 'autenticação anônima';
+        if (!auth.currentUser) await auth.signInAnonymously();
+        if (!auth.currentUser || !auth.currentUser.uid) throw new Error('Firebase Auth não retornou um UID.');
+        currentUid = auth.currentUser.uid;
+
+        firebaseInitStage = 'registrar identidade em contactCodes e users';
+        await registerOwnIdentity();
+
+        firebaseInitStage = 'sincronizar diretório de contatos';
+        await attachKnownContacts();
+
+        // Daqui em diante Auth e a identidade própria estão operacionais.
+        initialized = true;
+        firebaseInitError = null;
+        firebaseInitStage = 'inicializar presença';
+        try { await syncPresenceWatchers(); }
+        catch (error) { console.warn('RdChat Firebase: presença ainda não sincronizada.', error); }
+
+        firebaseInitStage = 'abrir caixa de entrada';
+        try { await watchTextInbox(); }
+        catch (error) { console.warn('RdChat Firebase: caixa de entrada ainda não sincronizada.', error); }
+
+        // Os listeners por contato são auxiliares: um contato com regra/dado legado inválido não bloqueia a conta.
+        for (const contact of currentContacts().slice(0, 150)) {
+          if (contact && contact.email && contact.firebaseUid) {
+            try { await watchTextConversation(contact.email); }
+            catch (error) { console.warn('RdChat Firebase: listener de texto pendente para ' + norm(contact.email), error); }
+          }
+        }
+        startPresenceHeartbeat();
+        firebaseInitStage = 'sincronizar fotos de perfil';
+        try { await syncContactProfileWatchers(); }
+        catch (error) { console.warn('RdChat Firebase: fotos de perfil ainda não sincronizadas.', error); }
+        if (me && myAvatarData) publishCurrentProfilePhoto().catch(error => console.warn('RdChat: publicação inicial da foto de perfil pendente.', error));
+        firebaseInitStage = 'conectado';
+        try { window.dispatchEvent(new CustomEvent('rdchat-firebase-ready')); } catch (_) {}
+        return true;
+      } catch (error) {
+        firebaseInitError = {
+          stage: firebaseInitStage,
+          code: String(error && error.code || ''),
+          message: String(error && (error.message || error.name) || error).slice(0, 180),
+          at: Date.now()
+        };
+        try { error.rdchatStage = firebaseInitStage; } catch (_) {}
+        throw error;
       }
-      startPresenceHeartbeat();
-      await syncContactProfileWatchers();
-      if (me && myAvatarData) publishCurrentProfilePhoto().catch(error => console.warn('RdChat: publicação inicial da foto de perfil pendente.', error));
-      try { window.dispatchEvent(new CustomEvent('rdchat-firebase-ready')); } catch (_) {}
-      return true;
     })();
     try { return await initPromise; } finally { initPromise = null; }
   }
@@ -12012,9 +12093,11 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
         }
       }
     } catch (error) {
-      const reason = String(error && (error.code || error.message || error.name) || 'erro desconhecido').slice(0, 100);
-      console.error('RdChat Firebase: inicialização falhou.', error);
-      safeToast('Firebase indisponível (' + reason + '). Confira Auth anônimo, Firestore e regras publicadas.');
+      const stage = String(error && error.rdchatStage || firebaseInitStage || 'inicialização');
+      const code = String(error && error.code || 'sem código');
+      const detail = firebaseErrorMessage(error);
+      console.error('RdChat Firebase: falha na etapa "' + stage + '".', error);
+      safeToast('Firebase · ' + stage + ' · ' + detail + ' [' + code + ']');
     }
     return result;
   };
@@ -12087,6 +12170,7 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
     markTextRead: acknowledgeTextRead,
     refreshIdentity: async function() { if (!initialized) await initializeFirebase(); return registerOwnIdentity(); },
     get ready() { return initialized; },
+    get diagnostic() { return { ready: initialized, stage: firebaseInitStage, lastError: firebaseInitError }; },
     heartbeat: scheduleHeartbeat
   };
 })();
@@ -17744,7 +17828,7 @@ var T=window.RdChatTdlib={ready:false,state:'idle',userId:'',username:'',phoneHi
       if(typeof window.RdChatReceiveFirebaseText==='function')window.RdChatReceiveFirebaseText(remote);if(!d.fileId)ack({chatId:d.chatId,msgId:d.tgMessageId})}catch(e){console.warn('RdChat TDLib: mensagem ignorada',e)}}
 };
 /* ================= Login: Modo A / Modo B ================= */
-var mode='A';
+var mode=(function(){var p=profileOnDevice();return p&&p.accountType==='COM_NUMERO'?'B':'A'})();
 var originalSubmitAuthMode=null;
 var phoneRequested=false, requestBusy=false, phoneRequestTimer=null, phoneTipTimer=null;
 
@@ -17805,88 +17889,61 @@ T.onError=function(message){
 };
 
 function build(){
-  var nameInput=$('regName'),passInput=$('regPass');
-  var submit=$('authSubmit');
-  if(!nameInput||!passInput||!submit||$('rdModes'))return;
-  var nameField=nameInput.closest('.field');
-  var passField=passInput.closest('.field');
-  if(!nameField||!passField)return;
+  var nameInput=$('regName'),passInput=$('regPass'),submit=$('authSubmit');
+  var modes=$('rdModes'),phone=$('rdTgPhone'),code=$('rdTgCode'),tgPass=$('rdTgPass');
+  var phoneEye=$('rdTgPhoneEye'),passEye=$('rdTgPassEye');
+  if(!nameInput||!passInput||!submit||!modes||!phone||!code||!tgPass||!phoneEye||!passEye){
+    console.error('RdChat login: estrutura HTML incompleta; confira os campos estáticos do modo Com número.');
+    return;
+  }
+  if(modes.getAttribute('data-rd-bound')==='1'){render();return;}
+  modes.setAttribute('data-rd-bound','1');
 
-  var modes=document.createElement('div');
-  modes.className='rd-modes';
-  modes.id='rdModes';
-  modes.innerHTML='<button type="button" data-m="A" class="on">Usuário e senha</button><button type="button" data-m="B">Com número</button>';
-  nameField.parentNode.insertBefore(modes,nameField);
-
-  var fields=document.createElement('div');
-  fields.innerHTML=
-    '<div class="field rd-tg-step" id="rdTgPhoneF" hidden>'+
-      '<label for="rdTgPhone">Número de telefone</label>'+
-      '<div class="input-wrap">'+
-        '<input id="rdTgPhone" type="password" inputmode="tel" placeholder="+55 11 99999-9999" autocomplete="tel" autocapitalize="off" spellcheck="false">'+
-        '<button type="button" class="toggle-pass rd-phone-eye" id="rdTgPhoneEye" aria-label="Mostrar número" title="Mostrar número">'+
-          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'+
-        '</button>'+
-      '</div>'+
-    '</div>'+
-    '<div class="field rd-tg-step" id="rdTgCodeF" hidden>'+
-      '<label for="rdTgCode">Código recebido</label>'+
-      '<div class="input-wrap"><input id="rdTgCode" type="text" inputmode="numeric" maxlength="8" autocomplete="one-time-code" placeholder="Código do Telegram/SMS"></div>'+
-    '</div>'+
-    '<div class="field rd-tg-step" id="rdTgPassF" hidden>'+
-      '<label for="rdTgPass">Senha em duas etapas do Telegram</label>'+
-      '<div class="input-wrap"><input id="rdTgPass" type="password" autocomplete="current-password" placeholder="Senha do Telegram">'+
-      '<button type="button" class="toggle-pass" id="rdTgPassEye" aria-label="Mostrar senha do Telegram">'+
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'+
-      '</button></div>'+
-    '</div>';
-  // O telefone vem imediatamente depois do PIN; código e senha extra só aparecem durante a autenticação.
-  passField.parentNode.insertBefore(fields,passField.nextSibling);
-  $('rdTgPhoneF').after($('rdTgCodeF'),$('rdTgPassF'));
-
-  document.querySelectorAll('#rdModes button').forEach(function(button){
+  modes.querySelectorAll('button[data-m]').forEach(function(button){
     button.onclick=function(){
       mode=button.getAttribute('data-m')==='B'?'B':'A';
       render();
+      if(mode==='B'&&!profileOnDevice())setTimeout(function(){phone.focus()},60);
     };
   });
-  $('rdTgPhoneEye').onclick=function(){
-    var input=$('rdTgPhone');
-    if(!input)return;
-    var showing=input.type==='password';
-    input.type=showing?'tel':'password';
-    this.setAttribute('aria-label',showing?'Ocultar número':'Mostrar número');
-    this.setAttribute('title',showing?'Ocultar número':'Mostrar número');
+
+  phoneEye.onclick=function(){
+    var showing=phone.type==='password';
+    phone.type=showing?'tel':'password';
+    phoneEye.setAttribute('aria-label',showing?'Ocultar número':'Mostrar número');
+    phoneEye.setAttribute('title',showing?'Ocultar número':'Mostrar número');
+    phoneEye.style.color=showing?'var(--accent)':'';
   };
-  $('rdTgPassEye').onclick=function(){
-    var input=$('rdTgPass');
-    if(!input)return;
-    input.type=input.type==='password'?'text':'password';
+  passEye.onclick=function(){
+    var showing=tgPass.type==='password';
+    tgPass.type=showing?'text':'password';
+    passEye.setAttribute('aria-label',showing?'Ocultar senha do Telegram':'Mostrar senha do Telegram');
+    passEye.style.color=showing?'var(--accent)':'';
   };
-  $('rdTgPhone').addEventListener('input',function(){
-    this.value=this.value.replace(/[^\d+()\s.-]/g,'');
+  phone.addEventListener('input',function(){
+    this.value=this.value.replace(/[^\\d+()\\s.-]/g,'');
   });
-  $('rdTgPhone').addEventListener('keydown',function(event){
+  phone.addEventListener('keydown',function(event){
     if(event.key==='Enter'){event.preventDefault();submitPhoneMode()}
   });
-  $('rdTgCode').addEventListener('keydown',function(event){
+  code.addEventListener('keydown',function(event){
     if(event.key==='Enter'){event.preventDefault();submitPhoneMode()}
   });
-  $('rdTgPass').addEventListener('keydown',function(event){
+  tgPass.addEventListener('keydown',function(event){
     if(event.key==='Enter'){event.preventDefault();submitPhoneMode()}
   });
-  // O Enter no PIN segue para o telefone no modo B, sem disparar doRegister antes da hora.
+  // No modo numérico, Enter no PIN leva ao telefone/código/senha, nunca executa o cadastro local.
   passInput.addEventListener('keydown',function(event){
     if(mode==='B'&&event.key==='Enter'){
       event.preventDefault();event.stopPropagation();event.stopImmediatePropagation();
-      if(T.state==='aguardando_codigo')$('rdTgCode').focus();
-      else if(T.state==='aguardando_senha')$('rdTgPass').focus();
-      else $('rdTgPhone').focus();
+      if(T.state==='aguardando_codigo')code.focus();
+      else if(T.state==='aguardando_senha')tgPass.focus();
+      else phone.focus();
     }
   },true);
 
   originalSubmitAuthMode=window.submitAuthMode;
-  window.RDCHAT_LOGIN_ACCOUNT_TYPE='SEM_NUMERO';
+  window.RDCHAT_LOGIN_ACCOUNT_TYPE=mode==='B'?'COM_NUMERO':'SEM_NUMERO';
   window.submitAuthMode=function(){
     if(mode==='B')return submitPhoneMode();
     window.RDCHAT_LOGIN_ACCOUNT_TYPE='SEM_NUMERO';
