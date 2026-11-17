@@ -81,7 +81,7 @@ class WebAppInterface(
 
     private fun fileSuffix(displayName: String, mime: String): String {
         val extension = displayName.substringAfterLast('.', "").lowercase()
-        if (extension.matches(Regex("[a-z0-9]{1,8}"))) return ".$extension"
+        if (displayName.lastIndexOf('.') > 0 && extension.matches(Regex("[a-z0-9]{1,8}"))) return ".$extension"
         return when (mime.substringBefore(';').trim().lowercase()) {
             "image/jpeg" -> ".jpg"
             "image/png" -> ".png"
