@@ -56,6 +56,7 @@ class MainActivity : AppCompatActivity() {
     private var nativeFcmPageReady = false
     private var pendingNativeFcmToken: String? = null
     private val pendingNativeFcmPayloads = mutableListOf<String>()
+    private var pendingNotificationPayload: String? = null
 
     companion object {
         private const val WORKER_DOMAIN = "rdchat.edersonrgames.workers.dev"
@@ -221,6 +222,8 @@ class MainActivity : AppCompatActivity() {
         val pending = (stored + pendingNativeFcmPayloads.toList()).takeLast(50)
         pendingNativeFcmPayloads.clear()
         pending.forEach { deliverNativeFcmPayload(it) }
+        pendingNotificationPayload?.let { payload -> pendingNotificationPayload = null; deliverNotificationPayload(payload) }
+        intent?.getStringExtra("rdchat_notification_payload")?.takeIf { it.isNotBlank() }?.let { payload -> deliverNotificationPayload(payload); intent?.removeExtra("rdchat_notification_payload") }
 
         val prefs = getSharedPreferences("rdchat_fcm", Context.MODE_PRIVATE)
         val waitingToken = pendingNativeFcmToken
@@ -239,6 +242,21 @@ class MainActivity : AppCompatActivity() {
                 .addOnFailureListener { error -> android.util.Log.e("RDCHAT_FCM", "Falha ao atualizar token.", error) }
         } catch (error: Exception) { android.util.Log.e("RDCHAT_FCM", "Falha ao consultar token.", error) }
     }
+    private fun deliverNotificationPayload(payload: String) {
+        val safe = try { JSONObject(payload).toString() } catch (_: Exception) { return }
+        runOnUiThread {
+            if (!::webView.isInitialized || !nativeFcmPageReady || !isTrustedAppPage()) { pendingNotificationPayload = safe; return@runOnUiThread }
+            val js = "if (typeof window.RdChatOpenConversationFromNotification === 'function') window.RdChatOpenConversationFromNotification(JSON.parse(${JSONObject.quote(safe)}));"
+            webView.evaluateJavascript(js, null)
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        intent.getStringExtra("rdchat_notification_payload")?.takeIf { it.isNotBlank() }?.let(::deliverNotificationPayload)
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
