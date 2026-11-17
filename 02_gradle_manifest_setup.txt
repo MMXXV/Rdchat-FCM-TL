@@ -28,10 +28,12 @@ Leia README.md e docs/ARQUITETURA_E_PENDENCIAS.md antes de configurar o ambiente
 APK Android universal:
   O Gradle não divide mais os APKs por ABI. A saída direta é:
     app/build/outputs/apk/debug/app-debug.apk
-  O pacote inclui as arquiteturas nativas disponibilizadas pelas dependências do
-  projeto. A TDLib usada pelo login com número fornece arm64-v8a e x86_64.
-  Assim, o mesmo APK instala em smartphones e tablets Android compatíveis com
-  uma dessas arquiteturas e Android 7.0 (API 24) ou superior.
+  O pacote inclui e valida as quatro arquiteturas nativas disponibilizadas pelas
+  dependências: armeabi-v7a, arm64-v8a, x86 e x86_64.
+  Assim, o mesmo APK instala em smartphones, tablets e Chromebooks compatíveis
+  com uma dessas arquiteturas e Android 7.0 (API 24) ou superior.
+  As bibliotecas .so são comprimidas dentro do APK para reduzir o tamanho do
+  download; o Android as extrai durante a instalação.
 
   O APK não é um instalador nativo de Windows, macOS ou Linux. Em PCs comuns,
   use a versão Web no navegador ou um emulador Android. Chromebooks só podem
