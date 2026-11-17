@@ -13,23 +13,25 @@
 - FileProvider restrito a `cache/midia_privada/`.
 - Gradle version catalog, JDK 17 e versões alinhadas a AGP 9.5.1 / Gradle 9.6.0 / API 37.
 - Regras Firestore atualizadas para IDs de contato de seis dígitos, documento pai de sala, membros autorizados e inbox com `toUid` correspondente ao UID no caminho.
-- Mensagens, ponteiros, convites e tombstones recebem `expiresAt` (sete dias).
+- Mensagens de texto, ponteiros, convites e tombstones recebem `expiresAt` (sete dias); anexos no Bot Telegram usam retenção remota de aproximadamente 40–41 horas.
+- O HTML registra tokens FCM no campo legado `users/{uid}.fcmToken` e na subcoleção `users/{uid}/fcmTokens/{sha256}`.
+- O Worker unificado foi adicionado em `rdchat-fcm-worker/`: reaproveita o gateway FCM do `Rdchat2` e implementa `/v1/media` e `/v1/profile` para anexos e mídia completa de perfil.
 - O HTML fixa `RDCHAT_ZERO_P2P=true` e bloqueia criação de RTCPeerConnection.
 
 ## Contrato de transporte atual
 
 O HTML atual:
 1. grava o documento `textConversations/{room}`;
-2. grava `textConversations/{room}/messages/{id}`;
-3. cria um item `messageInbox/{recipientUid}/items/{id_senderUid}` por destinatário;
-4. chama o Worker FCM `POST /v1/push` com Firebase ID token e os campos `roomId/messageId/kind/body`;
-5. chama o Worker HTTP de mídia `POST /v1/media` para anexos.
+2. grava texto em `textConversations/{room}/messages/{id}` e cria um item `messageInbox/{recipientUid}/items/{id_senderUid}` por destinatário;
+3. chama `POST /v1/push` com Firebase ID token para acordar os aparelhos destinatários;
+4. para anexos, chama `POST /v1/media`; o Worker envia ao canal privado Telegram, grava a mensagem/mídia/inbox no Firestore e dispara FCM;
+5. para mídia completa de perfil, chama `POST /v1/profile` e `GET /v1/profile/{uid}`. A prévia reduzida é replicada para `users` e `contactCodes`; o arquivo completo fica no canal privado Telegram.
 
-O Android recebe data-only FCM, repassa ao callback HTML e o serviço tenta confirmar wake com `POST /v1/delivered`. O código dos Workers não foi incluído neste repositório; não foi possível validar sua implantação, autenticação, TTL de fila ou resposta.
+O Android recebe data-only FCM, repassa ao callback HTML e o serviço confirma wake com `POST /v1/delivered`. O código do Worker está versionado em `rdchat-fcm-worker/`, mas a implantação no Cloudflare, os secrets e a resposta real dos endpoints ainda precisam ser verificados. O Worker possui rotinas de autenticação Firebase, FCM HTTP v1, Firestore REST e Telegram Bot API; CI comprova sintaxe, não operação de backend.
 
 ## Firestore: operação a realizar
 
-No Firebase Console, habilitar Time-to-live para o campo Timestamp `expiresAt` nas coleções de mensagens e inbox. Esse campo já é escrito pelo HTML, mas não apaga nada até a política TTL estar ativa. Confirmar também as quotas do plano Spark e regras no ambiente real.
+No Firebase Console, habilitar Time-to-live para o campo Timestamp `expiresAt` nos collection groups `messages` e `items`. Esse campo já é escrito pelo HTML, mas não apaga nada até a política TTL estar ativa. Não criar TTL em `telegramMedia`: o Worker precisa do registro para apagar a cópia no canal. O Worker limpa anexos por volta de 40–41 horas porque o Bot API impõe limite de menos de 48 horas para `deleteMessage`; o destinatário precisa baixar dentro dessa janela. Confirmar quotas do plano Spark e regras no ambiente real.
 
 O diretório `contactCodes` permite busca exata e bloqueia listagem. Isso não evita tentativa de enumerar seis dígitos: Rules não têm rate limit. Ativar App Check com enforcement e migrar resolução para um endpoint com limitação de taxa antes de abrir ao público.
 
@@ -49,7 +51,8 @@ O HTML define política imutável `RDCHAT_ZERO_P2P=true`; Trystero não é carre
 
 - O módulo `:app` agora inclui o TDLib Java/JNI por dependência fixada a commit, com ABIs arm64-v8a, armeabi-v7a, x86 e x86_64.
 - `MainActivity` registra os métodos esperados pelo HTML em `AndroidBridge` sem substituir a ponte nativa existente.
-- O carregamento TDLib é acionado após a página confiável carregar, permitindo retomar a sessão persistida.
+- O carregamento TDLib só é acionado após a página confiável carregar e confirmar `rdchat_profile.accountType === 'COM_NUMERO'`; o Modo A (`SEM_NUMERO`) não inicializa TDLib.
+- A dependência TDLib JNI continua empacotada no APK único; ela ainda contribui para o tamanho do APK, embora não seja inicializada no Modo A.
 - O início de autenticação aguarda o estado `AuthorizationStateWaitPhoneNumber`; o número não é enviado antes de `SetTdlibParameters` concluir.
 - A chave aleatória do banco TDLib é protegida com AES-GCM e Android Keystore.
 - O usuário existente mantém o próprio username Telegram; um username técnico só é criado se não houver um.
@@ -65,12 +68,20 @@ Ainda é necessário:
 
 O Apps Script exige chave compartilhada, ações próprias, NIP-17 kind 1059 e fragmentos cifrados. O HTML atual não gera/decifra esse formato. Foi separado como alternativa de pesquisa; não publicar por cima do endpoint `/v1/push` atual.
 
-## Antes de produção
+## Antes de considerar o Modo A operacional
 
-- Compilar e instalar no Android Studio/um dispositivo real.
+1. Cadastrar GitHub Actions Secrets `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `FIREBASE_SERVICE_ACCOUNT`, `TELEGRAM_BOT_TOKEN` e `TELEGRAM_CHANNEL_ID` no repositório `Rdchat-FCM-TL`.
+2. Criar um canal privado exclusivo de mídia, adicionar o Bot como administrador com permissão de publicar/excluir e conferir o `TELEGRAM_CHANNEL_ID`.
+3. Executar Actions → **Deploy RdChat FCM + Telegram Worker** e conferir `GET /health` com `mediaConfigured: true`.
+4. Habilitar Authentication → Anonymous no Firebase e publicar as regras Firestore atualizadas.
+5. Ativar TTL `expiresAt` para `messages` e `items`, sem TTL em `telegramMedia`.
+6. Testar duas contas em dois aparelhos: texto, recibos, FCM com app aberto/minimizado/encerrado, anexo nos tipos suportados, download, perfil, exclusão e expiração.
+
+O CI mais recente passa na verificação de sintaxe do Worker e na compilação/testes unitários Android. Isso não substitui a implantação Cloudflare, a validação de regras/TTL no Firebase e o teste real de ponta a ponta.
+
+## Pendências para produção (Modo A e arquitetura geral)
+
 - Publicar/testar as regras Firestore em duas contas e confirmar mensagens, convites, recibos e exclusões.
-- Habilitar TTL `expiresAt` e confirmar exclusão real.
-- Verificar Workers `/v1/push`, `/v1/delivered`, `/v1/media` com app encerrado.
 - Testar permissões, câmera, microfone, FileProvider, notificações e biometria.
 - Implementar E2EE de ponta a ponta.
 - Ativar App Check e rate limiting de código.
