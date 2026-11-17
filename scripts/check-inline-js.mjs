@@ -30,7 +30,7 @@ const checks = {
   sameButtonConfirmsCode: has("submit.textContent='Confirmar código'"),
   sameButtonConfirmsTwoStepPassword: has("submit.textContent='Confirmar senha'"),
   privacyInfoIcon: has('id="rdTgPhoneInfo"'),
-  privacyInfoUsesEye: has('<path d="M1 12s4-8 11 8 11 8-4 8-11 8-11-8z"/>') && !has('M12 11v5M12 7h.01'),
+  privacyInfoUsesEye: has('<path d="M1 12s4-8 11-8 11 8-4 8-11 8-11-8z"/>') && !has('M12 11v5M12 7h.01'),
   privacyInfoAutoHides: has('},4200);'),
   phoneModeHidesSecondarySwitch: has('#screen-login.rd-login-phone-mode #authModeSwitch{display:none!important}'),
   phoneModeHasCleanSelector: has('#screen-login.rd-login-phone-mode .rd-modes{'),
