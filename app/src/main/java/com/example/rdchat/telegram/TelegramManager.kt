@@ -285,7 +285,7 @@ class TelegramManager(
 
         fun finishPrivacyStep() {
             if (completed.incrementAndGet() == 2) {
-                garantirUsername { username ->
+                garantirUsername({ username ->
                     send(TdApi.GetMe()) { me ->
                         if (me is TdApi.User) {
                             cb.onReady(me.id, username, phoneHidden.get())
@@ -293,7 +293,7 @@ class TelegramManager(
                             cb.onError(me.message)
                         }
                     }
-                }
+                })
             }
         }
 
@@ -382,8 +382,11 @@ class TelegramManager(
                     text.text = caption
                     message.inputMessageContent = text
                 } else {
+                    val inputDocument = TdApi.InputDocument()
+                    inputDocument.document = TdApi.InputFileLocal(arquivo.absolutePath)
+                    inputDocument.disableContentTypeDetection = false
                     val document = TdApi.InputMessageDocument()
-                    document.document = TdApi.InputFileLocal(arquivo.absolutePath)
+                    document.document = inputDocument
                     document.caption = caption
                     message.inputMessageContent = document
                 }
