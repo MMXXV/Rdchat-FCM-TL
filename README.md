@@ -36,6 +36,10 @@ Os arquivos `gradlew` e `gradlew.bat` são launchers bootstrap deste repositóri
 
 O código-fonte dos Workers não está neste repositório, portanto os endpoints remotos não foram alterados nem testados.
 
+## Implantação Firebase
+
+O projeto já inclui `firebase.json` e `.firebaserc`. Consulte `docs/CONFIGURAR_FIREBASE.md` para publicar regras, configurar TTL e ativar App Check.
+
 ## Expiração da fila
 
 Mensagens, inbox, convites e eventos de exclusão passam a receber `expiresAt` com janela de sete dias. É obrigatório ativar TTL no Firebase Console para o campo `expiresAt` nas coleções relevantes. Até a política estar ativa, os documentos não são removidos automaticamente.

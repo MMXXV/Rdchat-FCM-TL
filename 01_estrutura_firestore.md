@@ -13,6 +13,10 @@ Os códigos são armazenados com seis dígitos sem hífen (`123456`). A interfac
 - `textConversations/{room}/messages/{messageId}`: texto, recibos e tombstones de exclusão.
 - `messageInbox/{uid}/items/{itemId}`: ponteiros para mensagens e convites.
 
+## Publicar regras
+
+O repositório contém `firebase.json` e `.firebaserc`: execute `firebase login`, `firebase use default` e `firebase deploy --only firestore:rules` na raiz.
+
 ## Envio
 
 O cliente resolve o UID pelo código, cria/atualiza o documento da sala, grava a mensagem e cria um item por destinatário em `messageInbox`. Em seguida chama o Worker FCM `/v1/push` para acordar o aparelho. O FCM é um aviso de sincronização; o conteúdo é recuperado do Firestore quando o HTML inicializa.
