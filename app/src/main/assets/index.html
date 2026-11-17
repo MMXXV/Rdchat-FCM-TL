@@ -5343,9 +5343,12 @@ body.booting #rdchat-startup-cover {
   }
 
   async function requestPermissions() {
-    // Notificações locais: usa a ponte Android/Capacitor quando disponível e a API Web no navegador.
+    // Solicita primeiro câmera e microfone pelo Android; o host enfileira os dois pedidos.
     try {
       const native = window.AndroidBridge;
+      if (native && typeof native.requestCameraAndMicrophonePermissions === 'function') {
+        native.requestCameraAndMicrophonePermissions();
+      }
       if (native && typeof native.requestNotificationPermission === 'function') await native.requestNotificationPermission();
       const plugins = window.Capacitor && window.Capacitor.Plugins;
       if (plugins && plugins.LocalNotifications && typeof plugins.LocalNotifications.requestPermissions === 'function') await plugins.LocalNotifications.requestPermissions();
@@ -12001,7 +12004,11 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
           catch (error) { console.warn('RdChat: listener Firebase do grupo pendente.', error); }
         }
       }
-    } catch (error) { console.error('RdChat Firebase: inicialização falhou.', error); safeToast('Firebase indisponível no momento; tente novamente.'); }
+    } catch (error) {
+      const reason = String(error && (error.code || error.message || error.name) || 'erro desconhecido').slice(0, 100);
+      console.error('RdChat Firebase: inicialização falhou.', error);
+      safeToast('Firebase indisponível (' + reason + '). Confira Auth anônimo, Firestore e regras publicadas.');
+    }
     return result;
   };
 
@@ -17663,12 +17670,14 @@ window.rdOpenMediaEditor=function(o){return new Promise(function(resolve){
 var BELL='<svg viewBox="0 0 56 56"><path d="M28 8c-9 0-14 7-14 16v9l-5 8h38l-5-8v-9c0-9-5-16-14-16z" fill="#ffe3a3" stroke="#a87c2a" stroke-width="2.5"/><path d="M22 46a6 6 0 0 0 12 0z" fill="#ffe3a3" stroke="#a87c2a" stroke-width="2.5"/></svg>';
 var CON='<svg viewBox="0 0 56 56"><circle cx="28" cy="28" r="25" fill="#c9d1f2" stroke="#6b78b0" stroke-width="3"/><circle cx="28" cy="22" r="8" fill="#e3e7fa" stroke="#6b78b0" stroke-width="2.5"/><path d="M12 44c3-9 9-12 16-12s13 3 16 12" fill="#e3e7fa" stroke="#6b78b0" stroke-width="2.5"/></svg>';
 var PHN='<svg viewBox="0 0 56 56"><path d="M14 8l8-2 5 12-6 4a28 28 0 0 0 13 13l4-6 12 5-2 8c-1 3-4 5-7 5C27 47 9 29 9 15c0-3 2-6 5-7z" fill="#c9d1f2" stroke="#6b78b0" stroke-width="2.5" stroke-linejoin="round"/></svg>';
+var CAM='<svg viewBox="0 0 56 56"><rect x="6" y="15" width="33" height="27" rx="5" fill="#c9d1f2" stroke="#6b78b0" stroke-width="2.5"/><path d="M39 23l11-6v23l-11-6z" fill="#e3e7fa" stroke="#6b78b0" stroke-width="2.5" stroke-linejoin="round"/><circle cx="23" cy="28.5" r="7" fill="#e3e7fa" stroke="#6b78b0" stroke-width="2.5"/></svg>';
+var MIC='<svg viewBox="0 0 56 56"><rect x="21" y="5" width="14" height="29" rx="7" fill="#c9d1f2" stroke="#6b78b0" stroke-width="2.5"/><path d="M12 25v3a16 16 0 0 0 32 0v-3M28 44v7M19 51h18" fill="none" stroke="#6b78b0" stroke-width="2.8" stroke-linecap="round"/></svg>';
 window.rdShowOnboarding=function(force){
   try{if(!force&&localStorage.getItem('rdchat_onboard_v1'))return Promise.resolve()}catch(_){}
   return new Promise(function(res){
     var ob=document.createElement('div');ob.className='rd-ob';host().appendChild(ob);
     function fin(){try{localStorage.setItem('rdchat_onboard_v1','1')}catch(_){}ob.remove();res()}
-    function s2(){ob.innerHTML='<h2>Autorizar</h2><p class="lead">Para ajudar a enviar mensagens para pessoas que você conhece, o RdChat solicitará essas permissões.</p><div class="rd-ob-row">'+BELL+'<div><b>Notificações</b><span>Receba notificações quando receber mensagens novas.</span></div></div><div class="rd-ob-row">'+CON+'<div><b>Contatos</b><span>Encontre pessoas que você conhece. Seus contatos são protegidos e não ficam visíveis para outros usuários.</span></div></div><div class="rd-ob-foot"><button class="lk" data-a="no">Agora não</button><button class="rd-ob-btn" data-a="next">Próximo</button></div>';
+    function s2(){ob.innerHTML='<h2>Autorizar</h2><p class="lead">Para ajudar a enviar mensagens para pessoas que você conhece, o RdChat solicitará essas permissões.</p><div class="rd-ob-row">'+BELL+'<div><b>Notificações</b><span>Receba notificações quando receber mensagens novas.</span></div></div><div class="rd-ob-row">'+CON+'<div><b>Contatos</b><span>Encontre pessoas que você conhece. Seus contatos são protegidos e não ficam visíveis para outros usuários.</span></div></div><div class="rd-ob-row">'+CAM+'<div><b>Câmera</b><span>Permita tirar fotos e gravar vídeos diretamente no RdChat.</span></div></div><div class="rd-ob-row">'+MIC+'<div><b>Microfone</b><span>Permita gravar áudios e participar de chamadas.</span></div></div><div class="rd-ob-foot"><button class="lk" data-a="no">Agora não</button><button class="rd-ob-btn" data-a="next">Próximo</button></div>';
       ob.querySelector('[data-a=no]').onclick=fin;
       ob.querySelector('[data-a=next]').onclick=async function(){
         try{await window.__rd.requestPermissions()}catch(_){}
@@ -17688,8 +17697,8 @@ window.rdShowOnboarding=function(force){
 #screen-login.rd-login-phone-mode .rd-modes button{min-height:40px;padding:8px 10px;border:1px solid var(--border);border-radius:12px;background:var(--surface-2);color:var(--text-muted)}
 #screen-login.rd-login-phone-mode .rd-modes button.on{border-color:var(--accent);background:var(--accent);color:var(--accent-text,#fff)}
 .rd-tg-step[hidden],.rd-phone-tip[hidden]{display:none!important}
-#screen-login .rd-phone-info{width:38px;height:42px;flex:0 0 38px;padding:0;display:grid;place-items:center}
-#screen-login .rd-phone-info svg{width:21px;height:21px}
+#screen-login .rd-phone-eye{width:38px;height:42px;flex:0 0 38px;padding:0;display:grid;place-items:center}
+#screen-login .rd-phone-eye svg{width:21px;height:21px}
 #screen-login .rd-phone-tip{margin:8px 3px 0;padding:9px 11px;border-radius:10px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-muted);font-size:11px;line-height:1.45}
 #screen-login #authSubmit:disabled{opacity:.72;cursor:wait}
 </style>
@@ -17807,12 +17816,11 @@ function build(){
     '<div class="field rd-tg-step" id="rdTgPhoneF" hidden>'+
       '<label for="rdTgPhone">Número de telefone</label>'+
       '<div class="input-wrap">'+
-        '<input id="rdTgPhone" type="tel" inputmode="tel" placeholder="+55 11 99999-9999" autocomplete="tel" autocapitalize="off" spellcheck="false">'+
-        '<button type="button" class="toggle-pass rd-phone-info" id="rdTgPhoneInfo" aria-label="Informações sobre privacidade do número" title="Privacidade do número">'+
+        '<input id="rdTgPhone" type="password" inputmode="tel" placeholder="+55 11 99999-9999" autocomplete="tel" autocapitalize="off" spellcheck="false">'+
+        '<button type="button" class="toggle-pass rd-phone-eye" id="rdTgPhoneEye" aria-label="Mostrar número" title="Mostrar número">'+
           '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'+
         '</button>'+
       '</div>'+
-      '<div class="rd-phone-tip" id="rdPhonePrivacyTip" role="status" aria-live="polite" hidden></div>'+
     '</div>'+
     '<div class="field rd-tg-step" id="rdTgCodeF" hidden>'+
       '<label for="rdTgCode">Código recebido</label>'+
@@ -17835,7 +17843,14 @@ function build(){
       render();
     };
   });
-  $('rdTgPhoneInfo').onclick=showPhonePrivacyInfo;
+  $('rdTgPhoneEye').onclick=function(){
+    var input=$('rdTgPhone');
+    if(!input)return;
+    var showing=input.type==='password';
+    input.type=showing?'tel':'password';
+    this.setAttribute('aria-label',showing?'Ocultar número':'Mostrar número');
+    this.setAttribute('title',showing?'Ocultar número':'Mostrar número');
+  };
   $('rdTgPassEye').onclick=function(){
     var input=$('rdTgPass');
     if(!input)return;
@@ -17871,14 +17886,6 @@ function build(){
     return originalSubmitAuthMode&&originalSubmitAuthMode.apply(this,arguments);
   };
   render();
-}
-function showPhonePrivacyInfo(){
-  var tip=$('rdPhonePrivacyTip');
-  if(!tip)return;
-  tip.textContent='Seu número fica oculto: ninguém vê nem encontra você por ele. O RdChat usa só o código de 6 dígitos.';
-  tip.hidden=false;
-  if(phoneTipTimer)clearTimeout(phoneTipTimer);
-  phoneTipTimer=setTimeout(function(){tip.hidden=true;phoneTipTimer=null},4200);
 }
 function validatePhoneModeIdentity(){
   var name=String($('regName').value||'').trim();
