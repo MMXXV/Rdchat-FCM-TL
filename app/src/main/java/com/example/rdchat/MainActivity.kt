@@ -496,6 +496,25 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
+                @JavascriptInterface
+                fun shareText(text: String) {
+                    val payload = text.trim().take(100_000)
+                    if (payload.isBlank()) return
+                    runOnUiThread {
+                        if (!isTrustedAppPage()) return@runOnUiThread
+                        try {
+                            val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, payload)
+                            }
+                            startActivity(Intent.createChooser(sendIntent, "Compartilhar mensagens"))
+                        } catch (error: Exception) {
+                            android.util.Log.w("RDCHAT_SHARE", "Falha ao abrir o compartilhamento nativo.", error)
+                            showMessage("Não foi possível abrir o compartilhamento neste aparelho.")
+                        }
+                    }
+                }
+
                             @JavascriptInterface
                 fun openFileWithChooser(dataUrl: String, mime: String, name: String) {
                     RdChatMediaHandler(this@MainActivity).open(dataUrl, mime, name)
