@@ -23,3 +23,17 @@ Integração TDLib está isolada em integration-staging/tdlib e ainda não entra
 O Apps Script NIP-17 está em integration-staging/google-apps-script-nip17 e não
 substitui os Workers /v1/push e /v1/delivered.
 Leia README.md e docs/ARQUITETURA_E_PENDENCIAS.md antes de configurar o ambiente.
+
+
+APK Android universal:
+  O Gradle não divide mais os APKs por ABI. A saída direta é:
+    app/build/outputs/apk/debug/app-debug.apk
+  O pacote inclui as arquiteturas nativas disponibilizadas pelas dependências do
+  projeto. A TDLib usada pelo login com número fornece arm64-v8a e x86_64.
+  Assim, o mesmo APK instala em smartphones e tablets Android compatíveis com
+  uma dessas arquiteturas e Android 7.0 (API 24) ou superior.
+
+  O APK não é um instalador nativo de Windows, macOS ou Linux. Em PCs comuns,
+  use a versão Web no navegador ou um emulador Android. Chromebooks só podem
+  instalar o APK quando o modelo oferece suporte a aplicativos Android e sua
+  arquitetura é compatível.
