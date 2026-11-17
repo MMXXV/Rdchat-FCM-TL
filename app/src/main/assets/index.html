@@ -4149,7 +4149,7 @@ body.booting #rdchat-startup-cover {
           </div>
 
           <div class="input-area">
-            <div class="rec-panel" id="recPanel"><span class="rec-dot"></span><span id="recTime">0:00</span><div class="rec-wave" id="recWave" aria-hidden="true"></div><span id="recHint">‹ deslize para cancelar</span><button class="rec-cancel" id="recCancel" onclick="recFinish(true)">Cancelar</button><div class="rec-actions" id="recActions"><button type="button" class="rec-act rec-trash" id="recTrash" onclick="recFinish(true)" aria-label="Descartar gravação"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M9 7V4.5h6V7"/><path d="M6.5 7l.9 12.5h9.2L17.5 7"/><path d="M10.2 11v5.5M13.8 11v5.5"/></svg></button><button type="button" class="rec-act rec-pause" id="recPause" onclick="recTogglePause()"><svg id="recPauseIcon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><rect x="6.5" y="4.5" width="3.8" height="15" rx="1.4"/><rect x="13.7" y="4.5" width="3.8" height="15" rx="1.4"/></svg><span id="recPauseLabel">Pausar</span></button><button type="button" class="rec-act rec-send" id="recSendBtn" onclick="recFinish(false)" aria-label="Enviar áudio"><svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor"><path d="M3.4 20.4 21 12 3.4 3.6l.02 6.5L15 12 3.42 13.9z"/></svg></button></div></div>
+            <div class="rec-panel" id="recPanel"><span class="rec-dot"></span><span id="recTime">0:00</span><div class="rec-wave" id="recWave" aria-hidden="true"></div><div class="rec-actions" id="recActions"><button type="button" class="rec-act rec-trash" id="recTrash" onclick="recFinish(true)" aria-label="Descartar gravação"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M9 7V4.5h6V7"/><path d="M6.5 7l.9 12.5h9.2L17.5 7"/><path d="M10.2 11v5.5M13.8 11v5.5"/></svg></button><button type="button" class="rec-act rec-pause" id="recPause" onclick="recTogglePause()"><svg id="recPauseIcon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><rect x="6.5" y="4.5" width="3.8" height="15" rx="1.4"/><rect x="13.7" y="4.5" width="3.8" height="15" rx="1.4"/></svg><span id="recPauseLabel">Pausar</span></button><button type="button" class="rec-act rec-send" id="recSendBtn" onclick="recFinish(false)" aria-label="Enviar áudio"><svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor"><path d="M3.4 20.4 21 12 3.4 3.6l.02 6.5L15 12 3.42 13.9z"/></svg></button></div></div>
             <div class="rec-lock" id="recLock">🔒<span>↑</span></div>
             <div class="input-wrapper">
               <button class="action-btn" id="btnEmoji" onclick="toggleEmojiPicker(event)">
@@ -6252,10 +6252,11 @@ function rdchatRenderTextPreservingEmoji(value) {
   let rec = null, recChunks = [], recStart = 0, recTimer = null, recStream = null, recCancelled = false;
   let recState = 'idle', recDrag = null, ignoreClick = 0, recReady = false, recEndReq = false;
   function showRecUI(on, locked) {
-    $('recPanel').style.display = on ? 'flex' : 'none';
+    // A faixa flutuante de "deslize para cancelar" foi removida.
+    // O painel inferior aparece somente quando a gravação é travada para oferecer
+    // lixeira, pausa, visualização única e envio.
+    $('recPanel').style.display = (on && locked) ? 'flex' : 'none';
     try { if (typeof window.rdRecUiState === 'function') window.rdRecUiState(!!on, !!locked); } catch (_) {}
-    $('recHint').style.display = locked ? 'none' : 'block';
-    $('recCancel').style.display = locked ? 'block' : 'none';
     $('recLock').style.display = (on && !locked) ? 'flex' : 'none';
     $('btnSendAudio').classList.toggle('rec', on && !locked);
     if (locked) { $('iconMic').style.display = 'none'; $('iconSend').style.display = 'block'; }
@@ -6431,9 +6432,10 @@ function rdchatRenderTextPreservingEmoji(value) {
   }
   function recMove(e) {
     if (recState !== 'holding' || !recDrag) return;
-    const dy = recDrag.y - e.clientY, dx = recDrag.x - e.clientX;
+    const dy = recDrag.y - e.clientY;
+    // Arrastar para cima trava a gravação e abre o painel inferior.
+    // Arrastar para os lados não cancela: a exclusão fica concentrada na lixeira.
     if (dy > 70) { recState = 'locked'; showRecUI(true, true); if (navigator.vibrate) navigator.vibrate(20); }
-    else if (dx > 110) recRelease(true);
   }
   function initMic() {
     const mic = $('btnSendAudio');
@@ -7353,7 +7355,12 @@ function rdchatRenderTextPreservingEmoji(value) {
     closeOv('nameOverlay');
   }
 
-  function toggleAttachMenu(event) { if (event) event.stopPropagation(); $('attachMenu').classList.toggle('show'); closeEmojiPicker(); }
+  function toggleAttachMenu(event) {
+    if (event) event.stopPropagation();
+    $('attachMenu').classList.toggle('show');
+    closeEmojiPicker();
+    if (typeof window.rdSyncAttachTrayLayout === 'function') window.rdSyncAttachTrayLayout();
+  }
   function triggerFile(accept) {
     skipLock();
     const f = $('fileInput');
@@ -18036,5 +18043,80 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 })();
 </script>
 
+
+<!-- Ajustes pontuais: gravação, botão de áudio de visualização única e bandeja de anexos -->
+<style id="rdchat-audio-attach-adjustments-v1">
+  /* O botão de visualização única ganha área própria e espaçamento consistente. */
+  #recPanel.rd-rec-locked .rec-actions {
+    gap: 14px !important;
+  }
+  #recPanel.rd-rec-locked #rdVoAudioBtn {
+    display: flex !important;
+    flex: 0 0 54px !important;
+    width: 54px !important;
+    min-width: 54px !important;
+    height: 54px !important;
+    margin: 0 2px !important;
+    padding: 0 !important;
+    box-sizing: border-box !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 50% !important;
+    background: var(--surface-3) !important;
+    color: var(--text) !important;
+  }
+  #recPanel.rd-rec-locked #rdVoAudioBtn svg {
+    width: 26px !important;
+    height: 26px !important;
+  }
+
+  /* Com a bandeja aberta, o campo de mensagem fica imediatamente acima dela. */
+  #screen-chat.rd-attach-menu-open .input-area {
+    position: absolute !important;
+    top: auto !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: var(--tray-h) !important;
+    width: 100% !important;
+    margin: 0 !important;
+    transform: none !important;
+    box-sizing: border-box !important;
+    z-index: 70 !important;
+  }
+  #screen-chat.rd-attach-menu-open #attachMenu {
+    position: absolute !important;
+    top: auto !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    height: var(--tray-h) !important;
+    z-index: 65 !important;
+    box-sizing: border-box !important;
+  }
+  #screen-chat.rd-attach-menu-open #messages {
+    padding-bottom: calc(var(--composer-h, 62px) + var(--tray-h) + 10px) !important;
+  }
+</style>
+<script id="rdchat-sync-attach-tray-v1">
+(function () {
+  var menu = document.getElementById('attachMenu');
+  var chat = document.getElementById('screen-chat');
+  if (!menu || !chat) return;
+
+  function sync() {
+    var open = menu.classList.contains('show');
+    chat.classList.toggle('rd-attach-menu-open', open);
+  }
+
+  window.rdSyncAttachTrayLayout = sync;
+  sync();
+  new MutationObserver(sync).observe(menu, {
+    attributes: true,
+    attributeFilter: ['class']
+  });
+})();
+</script>
 </body>
 </html>
