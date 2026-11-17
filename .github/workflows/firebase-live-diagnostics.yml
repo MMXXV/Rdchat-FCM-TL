@@ -1,0 +1,28 @@
+name: Audit live Firebase Authentication settings
+
+on:
+  pull_request:
+    paths:
+      - "app/src/main/assets/index.html"
+      - "app/google-services.json"
+      - "firebase.json"
+      - ".firebaserc"
+      - "scripts/check-firebase-auth-config.mjs"
+      - ".github/workflows/firebase-live-diagnostics.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  firebase-auth:
+    runs-on: ubuntu-latest
+    env:
+      FIREBASE_SERVICE_ACCOUNT: \${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Consultar configuração real do Firebase Authentication
+        run: node scripts/check-firebase-auth-config.mjs
