@@ -27,7 +27,7 @@ for path in xml_files:
 manifest_path = ROOT / "app/src/main/AndroidManifest.xml"
 manifest = ET.parse(manifest_path).getroot()
 permissions = {node.get(ANDROID_NS + "name") for node in manifest.findall("uses-permission")}
-features = {node.get(ANDROID_NS + "name"): node.get("required", "true") for node in manifest.findall("uses-feature")}
+features = {node.get(ANDROID_NS + "name"): node.get(ANDROID_NS + "required", "true") for node in manifest.findall("uses-feature")}
 application = manifest.find("application")
 activities = application.findall("activity") if application is not None else []
 services = application.findall("service") if application is not None else []
