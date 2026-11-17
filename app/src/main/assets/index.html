@@ -11949,6 +11949,14 @@ window.RDCHAT_RELAY_API = window.RDCHAT_RELAY_API || 'https://rdchat.edersonrgam
     const result = typeof originalStartSession === 'function' ? await originalStartSession.apply(this, arguments) : undefined;
     try {
       await initializeFirebase();
+      // Obtém novamente o token nativo depois de registrar o perfil; o callback de boot pode ter ocorrido antes do login.
+      try {
+        if (window.AndroidBridge && typeof window.AndroidBridge.getFcmToken === 'function') {
+          window.AndroidBridge.getFcmToken();
+        }
+      } catch (tokenError) {
+        console.warn('RdChat: token FCM nativo será solicitado novamente na próxima sessão.', tokenError);
+      }
       for (const chat of Object.values(meta || {})) {
         if (chat && chat.isGroup && Array.isArray(chat.members) && chat.members.length) {
           try { await watchTextConversation({ ...chat, key: chat.key, isGroup: true }); }
