@@ -6308,7 +6308,7 @@ function rdchatRenderTextPreservingEmoji(value) {
 
   function pickRecorderMime() {
     if (!window.MediaRecorder || !MediaRecorder.isTypeSupported) return '';
-    return ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'].find(t => MediaRecorder.isTypeSupported(t)) || '';
+    return ['audio/ogg;codecs=opus', 'audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'].find(t => MediaRecorder.isTypeSupported(t)) || '';
   }
 
   async function recBegin(e) {
