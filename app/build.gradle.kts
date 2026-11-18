@@ -799,6 +799,89 @@ val prepareRdchatAssets = tasks.register("prepareRdchatAssets") {
 </script>
 """.trimIndent()
         replaceExactlyOnce("</body>", "$reciprocalRuntime\\n</body>", "sincronização de contatos recíprocos e FCM")
+
+        replaceExactlyOnce(
+            """  async function markTextRead(roomId, messageId) {
+    if (!initialized) await initializeFirebase();
+    if (!fs || !currentUid || !roomId || !messageId) return;
+    const ref = fs.collection('textConversations').doc(String(roomId)).collection('messages').doc(String(messageId));
+    await ref.update({ deliveredBy: firebase.firestore.FieldValue.arrayUnion(currentUid), readBy: firebase.firestore.FieldValue.arrayUnion(currentUid) });
+  }""",
+            """  async function markTextRead(roomId, messageId) {
+    return markTextReadBatch(roomId, [messageId]);
+  }
+
+  async function markTextReadBatch(roomId, messageIds) {
+    if (!initialized) await initializeFirebase();
+    if (!fs || !currentUid || !roomId || !Array.isArray(messageIds)) return;
+    const ids = Array.from(new Set(messageIds.map(id => String(id || '').trim()).filter(Boolean)));
+    if (!ids.length) return;
+    const update = { deliveredBy: firebase.firestore.FieldValue.arrayUnion(currentUid), readBy: firebase.firestore.FieldValue.arrayUnion(currentUid) };
+    for (let offset = 0; offset < ids.length; offset += 450) {
+      const batch = fs.batch();
+      ids.slice(offset, offset + 450).forEach(id => {
+        batch.update(fs.collection('textConversations').doc(String(roomId)).collection('messages').doc(id), update);
+      });
+      await batch.commit();
+    }
+  }""",
+            "recibos de leitura em lote por conversa"
+        )
+
+        replaceExactlyOnce(
+            """    markTextRead: acknowledgeTextRead,""",
+            """    markTextRead: acknowledgeTextRead,
+    markTextReadBatch: markTextReadBatch,""",
+            "exposição do recibo de leitura em lote"
+        )
+
+        replaceExactlyOnce(
+            """  function sendRead(email, list) {
+    const legacy = [];
+    list.forEach(x => {
+      if (!Number.isFinite(Number(x.seenAt)) || Number(x.seenAt) <= 0) x.seenAt = Date.now();
+      if (x.transport === 'firebase' && x.firebaseRoomId) {
+        if (window.RdChatFirebase && window.RdChatFirebase.markTextRead) {
+          window.RdChatFirebase.markTextRead(x.firebaseRoomId, x.id).then(() => { x.rd = true; saveMsg(x); }).catch(error => console.warn('RdChat: recibo Firebase pendente.', error));
+        }
+      } else legacy.push(x);
+    });
+    if (!legacy.length) return;
+    const readAtById = {};
+    legacy.forEach(x => { readAtById[x.id] = Number(x.seenAt); });
+    if (!sendTo(email, { t: 'read', ids: legacy.map(x => x.id), readAtById })) return;
+    legacy.forEach(x => { x.rd = true; saveMsg(x); });
+  }""",
+            """  function sendRead(email, list) {
+    const legacy = [], firebaseGroups = new Map();
+    list.forEach(x => {
+      if (!Number.isFinite(Number(x.seenAt)) || Number(x.seenAt) <= 0) x.seenAt = Date.now();
+      if (x.transport === 'firebase' && x.firebaseRoomId) {
+        const room = String(x.firebaseRoomId);
+        if (!firebaseGroups.has(room)) firebaseGroups.set(room, []);
+        firebaseGroups.get(room).push(x);
+      } else legacy.push(x);
+    });
+    if (window.RdChatFirebase && window.RdChatFirebase.markTextReadBatch) {
+      firebaseGroups.forEach((items, roomId) => {
+        window.RdChatFirebase.markTextReadBatch(roomId, items.map(x => x.id)).then(() => {
+          items.forEach(x => { x.rd = true; saveMsg(x); });
+        }).catch(error => console.warn('RdChat: recibo Firebase em lote pendente.', error));
+      });
+    } else if (window.RdChatFirebase && window.RdChatFirebase.markTextRead) {
+      firebaseGroups.forEach((items, roomId) => items.forEach(x => {
+        window.RdChatFirebase.markTextRead(roomId, x.id).then(() => { x.rd = true; saveMsg(x); }).catch(error => console.warn('RdChat: recibo Firebase pendente.', error));
+      }));
+    }
+    if (!legacy.length) return;
+    const readAtById = {};
+    legacy.forEach(x => { readAtById[x.id] = Number(x.seenAt); });
+    if (!sendTo(email, { t: 'read', ids: legacy.map(x => x.id), readAtById })) return;
+    legacy.forEach(x => { x.rd = true; saveMsg(x); });
+  }""",
+            "recibo de leitura enviado uma única vez por lote"
+        )
+
         htmlFile.writeText(html, Charsets.UTF_8)
     }
 }
