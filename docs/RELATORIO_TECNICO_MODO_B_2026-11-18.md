@@ -21,8 +21,8 @@
 ### 3. Push Telegram e recuperação de histórico
 - Push recebido pelo fluxo já existente agora é colocado em fila persistente local (até 100 payloads) até a sessão TDLib ficar pronta; falhas de processamento não descartam o payload.
 - Os chats Telegram já usados pelo transporte RdChat são lembrados localmente.
-- Após a autenticação, o app carrega a lista TDLib e consulta até 100 mensagens recentes por chat conhecido, filtrando apenas envelopes `RDC1` de entrada. Conversas pessoais do Telegram fora desse contrato não são importadas para a interface RdChat.
-- O limite atual é intencional: histórico recente e chats conhecidos, não uma sincronização completa de toda a conta Telegram.
+- Após a autenticação, o app carrega a lista TDLib e consulta até 50 mensagens em cada um dos 20 chats RdChat conhecidos mais recentemente usados, filtrando apenas envelopes `RDC1` de entrada. Conversas pessoais do Telegram fora desse contrato não são importadas para a interface RdChat.
+- O limite é intencional: até 1.000 mensagens candidatas por ciclo, em segundo plano após o callback de login, para reduzir trabalho na abertura. Não é uma sincronização completa de toda a conta Telegram.
 
 ### 4. HTML e Gradle
 - O HTML final que antes era produzido por 33 substituições no Gradle foi materializado em `app/src/main/assets/index.html`.
@@ -44,16 +44,20 @@
 
 ## Validação automatizada e ressalvas
 
-- O workflow de materialização do HTML terminou com sucesso: [run 44232133666](https://github.com/MMXXV/Rdchat-FCM-TL/actions/runs/44232133666).
-- Um build Android com as alterações Kotlin iniciais passou, incluindo testes unitários e verificação das quatro ABIs: [run 44232133710](https://github.com/MMXXV/Rdchat-FCM-TL/actions/runs/44232133710). Esse build antecedeu a última correção do recibo de mídia e a adoção final do HTML canônico; portanto não é considerado a validação final deste relatório.
-- Na primeira execução sobre o HTML canônico, XML/JSON, emulator Firestore rules e live Firebase smoke passaram; a validação de JavaScript interrompeu o job por uma asserção antiga que esperava caracteres internacionais no campo, enquanto o fluxo atual normaliza o número brasileiro. Essa asserção foi atualizada para testar a normalização real; a nova execução está sendo validada separadamente.
+- A verificação completa de fonte/contrato terminou com sucesso no commit final de código: [run 44233241301](https://github.com/MMXXV/Rdchat-FCM-TL/actions/runs/44233241301). Os jobs de contratos, regras Firestore no emulador e Firebase live client smoke passaram.
+- O build universal final terminou com sucesso no commit `1aafd0286af26ae41740020c7797811e20d22514`: [run 44233241300](https://github.com/MMXXV/Rdchat-FCM-TL/actions/runs/44233241300).
+- O build executou `:app:assembleDebug` e `:app:testDebugUnitTest`; também extraiu `assets/index.html` do APK e aprovou os 19 testes de login, idade, permissões, notificações, contatos e compositor.
+- A checagem das bibliotecas TDLib/NTgCalls passou para `armeabi-v7a`, `arm64-v8a`, `x86` e `x86_64`. O APK universal foi enviado como artefato `rdchat-universal-debug-apk` (artifact ID `14396212259`), disponível no GitHub Actions até **25/11/2026**.
+- O APK foi conferido após o download do artefato: tamanho de `143.354.031` bytes; SHA-256 `c1d45287ae97d9e8fc36a203f4c46e8a0fcd835f0149027b360a9a4f2fee51fb`. É um APK **debug**, não uma versão de release assinada para distribuição pública.
+- Os 34 blocos JavaScript inline foram analisados e não apresentaram erros de sintaxe. Os testes automatizados verificam contratos de código e build; não simulam uma sessão Telegram real em dois aparelhos.
 - Compilação automatizada não substitui teste físico. Não foi possível confirmar login por SMS/2FA, push com processo encerrado, mídia, chamadas ou recuperação de rede em dois aparelhos reais.
+
 
 ## O que ainda falta
 
 1. **Teste com duas contas e dois aparelhos:** login telefônico real, código, senha 2FA, reiniciar app, histórico, texto, mídia, recibos, perda e retorno de internet.
 2. **Autonomia de push em segundo plano:** o serviço FCM nativo ainda persiste o payload quando não há WebView; a ponte o entrega à TDLib quando o app/WebView volta. A fila nova do gerenciador não equivale a um serviço TDLib independente da Activity.
-3. **Histórico completo:** a recuperação atual cobre até 100 mensagens recentes por chat RdChat previamente conhecido; não importa conversas desconhecidas nem histórico ilimitado.
+3. **Histórico completo:** a recuperação atual cobre até 50 mensagens em cada um dos 20 chats RdChat conhecidos mais recentemente usados; não importa conversas desconhecidas nem histórico ilimitado.
 4. **Mídia e chamadas:** confirmar ponta a ponta fotos, vídeos, áudio/voz, GIFs, documentos, limites de tamanho, permissão de câmera/microfone e chamadas reais em duas contas. A implementação de chamadas foi mantida, mas não testada fisicamente.
 5. **Publicação do backend:** a atualização mais recente do Worker não foi confirmada em produção porque o workflow anterior não tinha secrets Cloudflare/Telegram necessários. A publicação de regras Firestore também falhou por permissão IAM 403 (`serviceusage.services.get`). Os testes emulador e smoke do cliente não provam que esses deployments estejam atualizados.
 6. **Segurança e privacidade:** revisar App Check, limites antiabuso e estratégia E2EE. O Modo B atualmente usa username Telegram para localizar a conta; o username técnico criado automaticamente é público e isso é diferente de ocultar o número de telefone.
