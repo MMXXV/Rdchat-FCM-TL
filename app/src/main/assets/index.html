@@ -10640,7 +10640,7 @@ window.openAvatarPicker = openAvatarPicker;
   window.RdChatReceiveFirebaseText = async function(remote) {
     const isDeletion=!!(remote && (remote.kind==='deleted' || remote.deletedForEveryone===true));
     const isTelegramMedia = !!(remote && remote.telegramMediaId && ['image','video','audio','gif','file'].includes(String(remote.kind || '')));
-    if (!remote || (!isDeletion && remote.kind !== 'text' && !isTelegramMedia) || !remote.id || !me || !idb) return;
+    if (!remote || (!isDeletion && remote.kind !== 'text' && !isTelegramMedia) || !remote.id || !me || !idb) return false;
     if(isDeletion){
       const local=msgStore.get(String(remote.id))||await dbGet('msgs',String(remote.id)).catch(()=>null);
       const author=normEmail(remote.fromEmail||remote.deletedBy||'');
@@ -10659,7 +10659,7 @@ window.openAvatarPicker = openAvatarPicker;
       tomb.deletedByName=String(remote.deletedByName||remote.fromName||nameOf(author)||'usuário').slice(0,40);
       tomb.kind='deleted'; tomb.text='Mensagem apagada por '+tomb.deletedByName;
       delete tomb.data; delete tomb.url; delete tomb.prev;
-      msgStore.set(tomb.id,tomb); await saveMsg(tomb); renderDeletedBubble(tomb); await refreshPreviewAfterDelete(chatKey); return;
+      msgStore.set(tomb.id,tomb); await saveMsg(tomb); renderDeletedBubble(tomb); await refreshPreviewAfterDelete(chatKey); return true;
     }
     const ownUid = window.RdChatFirebase && window.RdChatFirebase.uid;
     const isOutgoing = String(remote.fromUid || '') === String(ownUid || '');
@@ -10669,7 +10669,7 @@ window.openAvatarPicker = openAvatarPicker;
 
     if (isOutgoing) {
       const msg = msgStore.get(String(remote.id)) || await dbGet('msgs', String(remote.id));
-      if (!msg) return;
+      if (!msg) return false;
       msg.transport = isTelegramMedia ? 'telegram' : 'firebase';
       msg.firebaseRoomId = remote.roomId || msg.firebaseRoomId;
       if (isTelegramMedia) msg.telegramMediaId = String(remote.telegramMediaId);
@@ -10697,12 +10697,16 @@ window.openAvatarPicker = openAvatarPicker;
         }
       }
       if (targetMeta && targetMeta.preview) setPreview(msg.chat, targetMeta.preview);
-      return;
+      return true;
     }
 
-    if (incomingFirebaseTextIds.has(String(remote.id)) || msgStore.has(String(remote.id))) return;
+    if (incomingFirebaseTextIds.has(String(remote.id))) return false;
+    if (msgStore.has(String(remote.id))) {
+      const storedDuplicate = await dbGet('msgs', String(remote.id)).catch(() => null);
+      if (storedDuplicate) return true;
+    }
     const persistedDuplicate = await dbGet('msgs', String(remote.id)).catch(() => null);
-    if (persistedDuplicate) { incomingFirebaseTextIds.add(String(remote.id)); return; }
+    if (persistedDuplicate) { incomingFirebaseTextIds.add(String(remote.id)); return true; }
     incomingFirebaseTextIds.add(String(remote.id));
     let chatKey, members = [], contact, m;
     if (isGroup) {
@@ -10722,7 +10726,7 @@ window.openAvatarPicker = openAvatarPicker;
       await saveChatMeta(m);
     } else {
       chatKey = normEmail(remote.fromEmail);
-      if (!validEmail(chatKey)) return;
+      if (!validEmail(chatKey)) return false;
       contact = contactOf(chatKey);
       if (!contact) {
         try { contact = await addContact(chatKey, remote.fromName || 'Contato', { firebaseUid: remote.fromUid, code: remote.fromCode || '' }); }
@@ -10737,7 +10741,7 @@ window.openAvatarPicker = openAvatarPicker;
     let mediaData = '';
     if (isTelegramMedia) {
       try { mediaData = await window.RdChatFirebase.downloadTelegramMedia(remote.telegramMediaId); }
-      catch (error) { console.warn('RdChat: falha ao baixar mídia protegida do Telegram.', error); toast('Não foi possível baixar a mídia. Verifique a conexão e tente novamente.'); incomingFirebaseTextIds.delete(String(remote.id)); return; }
+      catch (error) { console.warn('RdChat: falha ao baixar mídia protegida do Telegram.', error); toast('Não foi possível baixar a mídia. Verifique a conexão e tente novamente.'); incomingFirebaseTextIds.delete(String(remote.id)); return false; }
     }
     const inbound = {
       id: String(remote.id), chat: chatKey, out: false, from: normEmail(remote.fromEmail), kind: isTelegramMedia ? remote.kind : 'text',
@@ -10779,6 +10783,7 @@ window.openAvatarPicker = openAvatarPicker;
       }
     }
     incomingFirebaseTextIds.delete(String(remote.id));
+    return true;
   };
   function currentGroupMembersFromMeta(groupKey) {
     const item = meta[groupKey];
@@ -18063,7 +18068,7 @@ function B(){return window.AndroidBridge}
 function has(f){try{return !!(B()&&typeof B()[f]==='function')}catch(_){return false}}
 function tt(m){try{RD().toast(m)}catch(_){}}
 /* ================= TDLib (ponte nativa) ================= */
-var pend={},seq=0,sendWait={},ackMap={};
+var pend={},seq=0,sendWait={};
 function ack(a){try{if(has('tdlibConfirmarRecebimento'))B().tdlibConfirmarRecebimento(String(a.chatId),String(a.msgId))}catch(_){}}
 var T=window.RdChatTdlib={ready:false,state:'idle',userId:'',username:'',phoneHidden:false,
   iniciarLogin:function(phone){if(!has('tdlibIniciarLogin')){tt('Login com número disponível apenas no app Android.');return false}B().tdlibIniciarLogin(String(phone));T.state='aguardando_codigo_envio';render();return true},
@@ -18073,7 +18078,7 @@ var T=window.RdChatTdlib={ready:false,state:'idle',userId:'',username:'',phoneHi
   onReady:function(j){var d=typeof j==='string'?JSON.parse(j):(j||{});T.ready=true;T.state='ready';T.userId=String(d.userId||'');T.username=String(d.username||'');T.phoneHidden=!!d.phoneHidden;if(!T.phoneHidden)tt('Atenção: o Telegram não confirmou todas as restrições do número. Verifique Privacidade e Segurança no Telegram.');render()},
   onError:function(m){tt(String(m||'Erro no Telegram'))},
   baixar:function(fileId){return new Promise(function(res,rej){if(!has('tdlibBaixarArquivo'))return rej(new Error('Ponte TDLib indisponível'));var id='f'+(++seq);pend[id]={res:res,rej:rej,fileId:String(fileId)};B().tdlibBaixarArquivo(String(fileId),id);setTimeout(function(){if(pend[id]){delete pend[id];rej(new Error('Tempo esgotado ao baixar do Telegram'))}},180000)})},
-  onArquivo:function(reqId,dataUrl,ok,err){var p=pend[reqId];if(!p)return;delete pend[reqId];if(ok){var a=ackMap[p.fileId];if(a){ack(a);delete ackMap[p.fileId]}p.res(dataUrl)}else p.rej(new Error(err||'Falha ao baixar'))},
+  onArquivo:function(reqId,dataUrl,ok,err){var p=pend[reqId];if(!p)return;delete pend[reqId];if(ok){p.res(dataUrl)}else p.rej(new Error(err||'Falha ao baixar'))},
   onEnviado:function(msgId,ok,err){var w=sendWait[msgId];if(!w)return;delete sendWait[msgId];ok?w.res(true):w.rej(new Error(err||'Falha no envio'))},
   onCallEvent:function(j){try{if(typeof window.RdChatReceiveTelegramCall==='function')window.RdChatReceiveTelegramCall(j)}catch(e){console.warn('RdChat TDLib: evento de chamada inválido',e)}},
   onCallFrame:function(j){try{if(typeof window.RdChatReceiveTelegramCallFrame==='function')window.RdChatReceiveTelegramCallFrame(j)}catch(e){console.warn('RdChat TDLib: quadro de vídeo inválido',e)}},
@@ -18085,9 +18090,8 @@ var T=window.RdChatTdlib={ready:false,state:'idle',userId:'',username:'',phoneHi
         remote.mediaName=String(env.name||d.fileName||'arquivo');
         remote.mediaMime=String(env.mime||d.mime||'application/octet-stream');
         remote.mediaSize=Number(d.size||env.size||0);
-        ackMap[String(d.fileId)]={chatId:d.chatId,msgId:d.tgMessageId};
       }
-      if(typeof window.RdChatReceiveFirebaseText==='function'){var accepted=window.RdChatReceiveFirebaseText(remote);if(!d.fileId)Promise.resolve(accepted).then(function(){ack({chatId:d.chatId,msgId:d.tgMessageId})},function(e){console.warn('RdChat TDLib: mensagem não persistida; recibo não enviado.',e)})}}catch(e){console.warn('RdChat TDLib: mensagem ignorada',e)}}
+      if(typeof window.RdChatReceiveFirebaseText==='function'){var accepted=window.RdChatReceiveFirebaseText(remote);Promise.resolve(accepted).then(function(persisted){if(persisted===true)ack({chatId:d.chatId,msgId:d.tgMessageId});else console.warn('RdChat TDLib: mensagem não confirmada como persistida; recibo mantido pendente.')},function(e){console.warn('RdChat TDLib: mensagem não persistida; recibo não enviado.',e)})}}catch(e){console.warn('RdChat TDLib: mensagem ignorada',e)}}
 };
 /* ================= Login: Modo A / Modo B ================= */
 var mode=(function(){var p=profileOnDevice();return p&&p.accountType==='COM_NUMERO'?'B':'A'})();
