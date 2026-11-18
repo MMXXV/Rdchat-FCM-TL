@@ -506,10 +506,35 @@ val prepareRdchatAssets = tasks.register("prepareRdchatAssets") {
         )
 
         replaceExactlyOnce(
-            """    const plugins = window.Capacitor && window.Capacitor.Plugins;""",
-            """    try { if (window.AndroidBridge && typeof window.AndroidBridge.requestAppPermissions === 'function') window.AndroidBridge.requestAppPermissions(); } catch (_) {}
+            """      if (native && typeof native.requestNotificationPermission === 'function') await native.requestNotificationPermission();
       const plugins = window.Capacitor && window.Capacitor.Plugins;""",
-            "solicitação nativa de permissões na tela inicial"
+            """      if (native && typeof native.requestNotificationPermission === 'function') await native.requestNotificationPermission();
+      if (native && typeof native.requestAppPermissions === 'function') native.requestAppPermissions();
+      const plugins = window.Capacitor && window.Capacitor.Plugins;""",
+            "solicitação nativa das permissões na inicialização"
+        )
+
+        replaceExactlyOnce(
+            """    var ageNotice=$('rdBirthGateBanner');
+    if(!window.rdHasBirthDate || !window.rdHasBirthDate()){
+      if(!ageNotice){ageNotice=document.createElement('div');ageNotice.id='rdBirthGateBanner';var ph=document.querySelector('#screen-profile .profile-header');if(ph&&ph.parentNode)ph.parentNode.insertBefore(ageNotice,ph.nextSibling);}
+      if(ageNotice)ageNotice.textContent='Informe sua data de nascimento para liberar fotos, vídeos, GIFs, arquivos, foto de perfil e chamadas. Mensagens de texto continuam disponíveis com proteção reforçada.';
+    }else if(ageNotice)ageNotice.remove();""",
+            """    var ageNotice=$('rdBirthGateBanner'); if(ageNotice)ageNotice.remove();""",
+            "remoção do aviso etário dentro do Perfil"
+        )
+
+        replaceExactlyOnce(
+            """window.AndroidBridge.setActiveChatUid(String(uid));""",
+            """window.AndroidBridge.setActiveChatIdentity(String(uid), key);""",
+            "sincronização da conversa ativa com email"
+        )
+
+        replaceExactlyOnce(
+            """window.AndroidBridge.clearActiveChat();
+                    console.warn("[RdChat] UID do contato nao encontrado; notificacoes permanecem habilitadas.");""",
+            """window.AndroidBridge.setActiveChatIdentity("", key);""",
+            "sincronização por email quando UID ainda não foi resolvido"
         )
 
         htmlFile.writeText(html, Charsets.UTF_8)
