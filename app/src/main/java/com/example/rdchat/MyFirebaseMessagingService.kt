@@ -113,7 +113,10 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             persistPendingPayload(this, payloadJson)
         }
 
-        if (shouldSuppressNotification(senderId, senderEmail)) {
+        if (type == "rdchat_contact_added_v1") {
+            // O evento atualiza a lista de contatos nos dois aparelhos; não cria alerta de mensagem.
+            Log.i("RDCHAT_FCM", "CONTACT_LIST_REFRESH_RECEIVED senderId=$senderId")
+        } else if (shouldSuppressNotification(senderId, senderEmail)) {
             Log.i("RDCHAT_FCM", "NOTIFICATION_SUPPRESSED same_sender_chat_open senderId=$senderId")
         } else {
             showDataNotification(title, body, type, data, senderId, senderEmail)
