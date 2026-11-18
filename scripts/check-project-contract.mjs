@@ -86,16 +86,16 @@ check("native_fcm_service_exists", fcmService.includes("FirebaseMessagingService
 check("worker_has_syntax_check_script", typeof workerPackage.scripts?.check === "string");
 check("no_open_all_firestore_rules", !rules.includes("allow read, write: if true") && !rules.includes("allow write: if true"));
 
-check("age_gate_opens_birthdate_form", gradle.includes("window.rdEnsureBirthDate(true)"));
-check("age_and_device_permissions_are_in_settings", gradle.includes("Sua idade") && gradle.includes("Permissões do dispositivo"));
-check("composer_clears_text_before_remote_completion", gradle.includes("operation = postBubble") && gradle.includes("const sent = await operation;") && gradle.includes("O texto foi restaurado"));
-check("microphone_permission_uses_callback_bridge", gradle.includes("requestMicrophonePermissionWithCallback") && gradle.includes("window.onRdChatNativePermissionResult"));
+check("age_gate_opens_birthdate_form", html.includes("window.rdEnsureBirthDate(true)"));
+check("age_and_device_permissions_are_in_settings", html.includes("Sua idade") && html.includes("Permissões do dispositivo"));
+check("composer_clears_text_before_remote_completion", html.includes("operation = postBubble") && html.includes("const sent = await operation;") && html.includes("if (!sent) {") && html.includes("if (!input.value.trim()) input.value = text;"));
+check("microphone_permission_uses_callback_bridge", html.includes("requestMicrophonePermissionWithCallback") && html.includes("window.onRdChatNativePermissionResult"));
 check("active_chat_notification_filter_matches_uid_or_email", main.includes("setActiveChatIdentity(uid: String, email: String)") && fcmService.includes("active_sender_email") && fcmService.includes("sameUid || sameEmail"));
 check("notification_payload_routes_to_open_conversation", main.includes("RdChatOpenConversationFromNotification") && fcmService.includes("rdchat_notification_payload"));
-check("identity_and_contact_directory_use_authenticated_worker", gradle.includes("/v1/identity/register") && gradle.includes("/v1/contacts/add") && gradle.includes("/v1/contacts/lookup") && worker.includes("async function handleContactAdd"));
-check("reciprocal_contacts_sync_via_worker_and_fcm", gradle.includes("rdchat-reciprocal-contact-sync-v1") && worker.includes("rdchat_contact_added_v1") && worker.includes("if (!targetLink)"));
+check("identity_and_contact_directory_use_authenticated_worker", html.includes("/v1/identity/register") && html.includes("/v1/contacts/add") && html.includes("/v1/contacts/lookup") && worker.includes("async function handleContactAdd"));
+check("reciprocal_contacts_sync_via_worker_and_fcm", html.includes("rdchat-reciprocal-contact-sync-v1") && worker.includes("rdchat_contact_added_v1") && worker.includes("if (!targetLink)"));
 check("avatar_metadata_propagates_to_existing_contacts", worker.includes("profileCardFields") && worker.includes("contactDocuments.map"));
-check("firestore_read_receipts_are_batched", gradle.includes("markTextReadBatch"));
+check("firestore_read_receipts_are_batched", html.includes("markTextReadBatch"));
 check("telegram_hash_is_validated_and_passed_to_native_bridge", gradle.includes("verifyTelegramApiCredentials") && main.includes("BuildConfig.TELEGRAM_API_HASH") && managerConfiguredCheck());
 
 function managerConfiguredCheck() {
