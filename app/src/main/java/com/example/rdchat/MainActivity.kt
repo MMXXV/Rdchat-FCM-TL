@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.app.AlertDialog
 import android.annotation.SuppressLint
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -79,6 +80,7 @@ class MainActivity : AppCompatActivity() {
     private var permissionDialogInFlight = false
     private var activePermissionSet: Set<String> = emptySet()
     private val queuedPermissions = linkedSetOf<String>()
+    private val pendingJsPermissionCallbacks = linkedMapOf<String, String>()
 
     private val mediaExecutor = Executors.newSingleThreadExecutor()
 
@@ -176,10 +178,11 @@ class MainActivity : AppCompatActivity() {
         }
 
     private val runtimePermissionLauncher =
-        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
 
             permissionDialogInFlight = false
             activePermissionSet = emptySet()
+            resolveJavascriptPermissionCallbacks(result)
 
             resolvePendingPermissionActions()
             launchNextPermissionRequest()
@@ -469,6 +472,32 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 @JavascriptInterface
+                fun requestMicrophonePermissionWithCallback(requestId: String) {
+                    runOnUiThread {
+                        requestPermissionWithCallback(requestId, Manifest.permission.RECORD_AUDIO)
+                    }
+                }
+
+                @JavascriptInterface
+                fun requestAppPermissions() {
+                    runOnUiThread {
+                        val requested = mutableListOf(
+                            Manifest.permission.CAMERA,
+                            Manifest.permission.RECORD_AUDIO
+                        )
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            requested.add(Manifest.permission.POST_NOTIFICATIONS)
+                        }
+                        requestRuntimePermissions(requested)
+                    }
+                }
+
+                @JavascriptInterface
+                fun openAppPermissionSettings() {
+                    runOnUiThread { openAppPermissionSettingsNative() }
+                }
+
+                @JavascriptInterface
                 fun requestNotificationPermission() {
                     runOnUiThread {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -571,25 +600,26 @@ class MainActivity : AppCompatActivity() {
                 }
                 @JavascriptInterface
                 fun setActiveChatUid(uid: String) {
-                    val value = uid.trim()
-                    val prefs = this@MainActivity.getSharedPreferences(
-                        "rdchat_active",
-                        Context.MODE_PRIVATE
-                    )
+                    setActiveChatIdentity(uid, "")
+                }
 
-                    if (value.isBlank() || value.contains("@")) {
-                        prefs.edit().remove("active_sender_uid").apply()
-                    } else {
-                        prefs.edit().putString("active_sender_uid", value).apply()
-                    }
+                @JavascriptInterface
+                fun setActiveChatIdentity(uid: String, email: String) {
+                    val value = uid.trim()
+                    val mail = email.trim().lowercase()
+                    val prefs = this@MainActivity.getSharedPreferences("rdchat_active", Context.MODE_PRIVATE)
+                    val editor = prefs.edit()
+                    if (value.isNotBlank() && !value.contains("@")) editor.putString("active_sender_uid", value)
+                    else editor.remove("active_sender_uid")
+                    if (mail.isNotBlank() && mail.contains("@")) editor.putString("active_sender_email", mail)
+                    else editor.remove("active_sender_email")
+                    editor.apply()
                 }
 
                 @JavascriptInterface
                 fun clearActiveChat() {
-                    this@MainActivity.getSharedPreferences(
-                        "rdchat_active",
-                        Context.MODE_PRIVATE
-                    ).edit().remove("active_sender_uid").apply()
+                    this@MainActivity.getSharedPreferences("rdchat_active", Context.MODE_PRIVATE)
+                        .edit().remove("active_sender_uid").remove("active_sender_email").apply()
                 }
                 @JavascriptInterface
                 fun clearWebCache() {
@@ -899,21 +929,25 @@ class MainActivity : AppCompatActivity() {
                 !hasPermission(Manifest.permission.POST_NOTIFICATIONS)) return@runOnUiThread
             try {
                 val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    manager.createNotificationChannel(NotificationChannel("rdchat_messages", "Mensagens", NotificationManager.IMPORTANCE_HIGH))
+                val channelId = "rdchat_messages"
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                    manager.getNotificationChannel(channelId) == null) {
+                    manager.createNotificationChannel(NotificationChannel(channelId, "Mensagens", NotificationManager.IMPORTANCE_DEFAULT))
                 }
-                val intent = Intent(this, MainActivity::class.java).apply {
-                    flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                }
-                val pending = PendingIntent.getActivity(this, 7301, intent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-                val notification = NotificationCompat.Builder(this, "rdchat_messages")
+                val notification = NotificationCompat.Builder(this, channelId)
                     .setSmallIcon(R.mipmap.ic_launcher)
-                    .setContentTitle(title.trim().take(80).ifBlank { "RdChat" })
-                    .setContentText(body.trim().take(180).ifBlank { "Nova mensagem" })
-                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setContentTitle("RdChat")
+                    .setContentText("Nova mensagem recebida")
+                    .setStyle(NotificationCompat.BigTextStyle().bigText(title.trim().take(80) + "\\n" + body.trim().take(180)))
+                    .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+                    .setPublicVersion(NotificationCompat.Builder(this, channelId)
+                        .setSmallIcon(R.mipmap.ic_launcher)
+                        .setContentTitle("RdChat")
+                        .setContentText("Nova mensagem recebida")
+                        .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                        .build())
+                    .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                     .setAutoCancel(true)
-                    .setContentIntent(pending)
                     .build()
                 manager.notify((System.currentTimeMillis() % Int.MAX_VALUE).toInt(), notification)
             } catch (error: Exception) {
@@ -946,6 +980,59 @@ class MainActivity : AppCompatActivity() {
             this,
             permission
         ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun requestPermissionWithCallback(requestId: String, permission: String) {
+        val id = requestId.trim().take(80)
+        if (id.isBlank()) return
+        if (hasPermission(permission)) {
+            sendJavascriptCallback("window.onRdChatNativePermissionResult && window.onRdChatNativePermissionResult(\u0022" + id + "\u0022,true,true);")
+            return
+        }
+        pendingJsPermissionCallbacks[id] = permission
+        requestRuntimePermissions(listOf(permission))
+    }
+
+    private fun resolveJavascriptPermissionCallbacks(result: Map<String, Boolean>) {
+        val pending = pendingJsPermissionCallbacks.toMap()
+        pending.forEach { (requestId, permission) ->
+            if (permission !in result && !hasPermission(permission)) return@forEach
+            pendingJsPermissionCallbacks.remove(requestId)
+            val granted = hasPermission(permission) || result[permission] == true
+            val canAskAgain = granted || androidx.core.app.ActivityCompat.shouldShowRequestPermissionRationale(this, permission)
+            val js = "window.onRdChatNativePermissionResult && window.onRdChatNativePermissionResult(" +
+                JSONObject.quote(requestId) + "," + granted + "," + canAskAgain + ");"
+            sendJavascriptCallback(js)
+            if (!granted && !canAskAgain) showPermissionSettingsPrompt(permission)
+        }
+    }
+
+    private fun showPermissionSettingsPrompt(permission: String) {
+        val label = when (permission) {
+            Manifest.permission.RECORD_AUDIO -> "microfone"
+            Manifest.permission.CAMERA -> "câmera"
+            Manifest.permission.POST_NOTIFICATIONS -> "notificações"
+            else -> "permissão"
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Permissão necessária")
+            .setMessage("O Android bloqueou a solicitação de $label. Abra as configurações do RdChat para permitir o acesso.")
+            .setNegativeButton("Agora não", null)
+            .setPositiveButton("Abrir configurações") { _, _ -> openAppPermissionSettingsNative() }
+            .show()
+    }
+
+    private fun openAppPermissionSettingsNative() {
+        try {
+            val intent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.parse("package:$packageName")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+        } catch (error: Exception) {
+            android.util.Log.e("RDCHAT_PERMISSION", "Não foi possível abrir as configurações de permissões.", error)
+            showMessage("Abra Configurações do Android > Aplicativos > RdChat > Permissões.")
+        }
     }
 
     private fun permissionsForWebRequest(resources: Array<String>): List<String>? {
