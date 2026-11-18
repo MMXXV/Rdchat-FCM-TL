@@ -1,6 +1,11 @@
 name: Deploy RdChat FCM + Telegram Worker
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'rdchat-fcm-worker/**'
+      - '.github/workflows/deploy-fcm-worker.yml'
   workflow_dispatch:
 
 permissions:
