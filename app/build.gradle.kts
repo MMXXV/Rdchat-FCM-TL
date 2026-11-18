@@ -335,18 +335,6 @@ val prepareRdchatAssets = tasks.register("prepareRdchatAssets") {
         )
 
         replaceExactlyOnce(
-            """    const ageNotice=$('rdBirthGateBanner');
-    if(!window.rdHasBirthDate || !window.rdHasBirthDate()){
-      if(!ageNotice){ageNotice=document.createElement('div');ageNotice.id='rdBirthGateBanner';var ph=document.querySelector('#screen-profile .profile-header');if(ph&&ph.parentNode)ph.parentNode.insertBefore(ageNotice,ph.nextSibling);}
-      if(ageNotice)ageNotice.textContent='Informe sua data de nascimento para liberar fotos, vídeos, GIFs, arquivos, foto de perfil e chamadas. Mensagens de texto continuam disponíveis com proteção reforçada.';
-    }else if(ageNotice)ageNotice.remove();
-""",
-            """    var ageNotice=$('rdBirthGateBanner'); if(ageNotice)ageNotice.remove();
-""",
-            "remoção do banner de idade do Perfil"
-        )
-
-        replaceExactlyOnce(
             """    /* A data de nascimento é solicitada na primeira abertura do perfil, não na tela de login. */
     setTimeout(function(){ try { if (typeof window.rdEnsureBirthDate === 'function') window.rdEnsureBirthDate(); } catch(e) { console.warn('RdChat: não foi possível abrir o diálogo de nascimento.', e); } }, 260);
 """,
@@ -869,7 +857,7 @@ val prepareRdchatAssets = tasks.register("prepareRdchatAssets") {
 })();
 </script>
 """.trimIndent()
-        replaceExactlyOnce("</body>", "$reciprocalRuntime\\n</body>", "sincronização e migração de contatos recíprocos")
+        replaceExactlyOnce("</body>", "$reciprocalRuntime\n</body>", "sincronização e migração de contatos recíprocos")
         htmlFile.writeText(html, Charsets.UTF_8)
     }
 }
