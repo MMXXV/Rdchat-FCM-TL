@@ -599,22 +599,39 @@ class TelegramManager(
         if (chatId == 0L) return
         synchronized(knownRdChatLock) {
             val prefs = ctx.getSharedPreferences("rdchat_tdlib_sync", Context.MODE_PRIVATE)
-            val ids = LinkedHashSet(prefs.getStringSet("known_rdchat_chat_ids", emptySet()).orEmpty())
-            ids.add(chatId.toString())
-            while (ids.size > 200) {
-                val iterator = ids.iterator()
+            val ordered = LinkedHashSet<String>()
+            try {
+                val stored = JSONArray(prefs.getString("known_rdchat_chat_ids_ordered", "[]") ?: "[]")
+                for (index in 0 until stored.length()) {
+                    stored.optString(index).takeIf { it.toLongOrNull() != null }?.let(ordered::add)
+                }
+            } catch (_: Exception) { }
+            if (ordered.isEmpty()) ordered.addAll(prefs.getStringSet("known_rdchat_chat_ids", emptySet()).orEmpty())
+            ordered.remove(chatId.toString())
+            ordered.add(chatId.toString())
+            while (ordered.size > 100) {
+                val iterator = ordered.iterator()
                 if (iterator.hasNext()) { iterator.next(); iterator.remove() } else break
             }
-            prefs.edit().putStringSet("known_rdchat_chat_ids", HashSet(ids)).commit()
+            val json = JSONArray().apply { ordered.forEach { put(it) } }
+            prefs.edit()
+                .putString("known_rdchat_chat_ids_ordered", json.toString())
+                .putStringSet("known_rdchat_chat_ids", HashSet(ordered))
+                .commit()
         }
     }
 
     private fun knownRdChatIds(): List<Long> = synchronized(knownRdChatLock) {
         val prefs = ctx.getSharedPreferences("rdchat_tdlib_sync", Context.MODE_PRIVATE)
-        prefs.getStringSet("known_rdchat_chat_ids", emptySet()).orEmpty()
-            .mapNotNull { it.toLongOrNull() }
-            .distinct()
-            .take(200)
+        val ordered = LinkedHashSet<String>()
+        try {
+            val stored = JSONArray(prefs.getString("known_rdchat_chat_ids_ordered", "[]") ?: "[]")
+            for (index in 0 until stored.length()) {
+                stored.optString(index).takeIf { it.toLongOrNull() != null }?.let(ordered::add)
+            }
+        } catch (_: Exception) { }
+        if (ordered.isEmpty()) ordered.addAll(prefs.getStringSet("known_rdchat_chat_ids", emptySet()).orEmpty())
+        ordered.mapNotNull { it.toLongOrNull() }.distinct().takeLast(100)
     }
 
     private fun isRdChatEnvelope(message: TdApi.Message): Boolean {
@@ -638,13 +655,13 @@ class TelegramManager(
      */
     private fun syncKnownRdChatHistory() {
         if (!ready) return
-        val ids = knownRdChatIds()
+        val ids = knownRdChatIds().takeLast(20)
         if (ids.isEmpty()) return
         send(TdApi.LoadChats(null, 100)) {
             send(TdApi.GetChats(null, 100)) { result ->
                 val listed = (result as? TdApi.Chats)?.chatIds?.toSet().orEmpty()
                 val ordered = ids.filter { it in listed } + ids.filterNot { it in listed }
-                Log.i(TAG, "Sincronização de histórico RdChat: ${ordered.size} conversa(s) conhecida(s).")
+                Log.i(TAG, "Sincronização de histórico RdChat: ${ordered.size} conversa(s) recente(s), em segundo plano.")
                 syncKnownRdChatHistory(ordered, 0)
             }
         }
@@ -653,7 +670,7 @@ class TelegramManager(
     private fun syncKnownRdChatHistory(chatIds: List<Long>, index: Int) {
         if (!ready || index >= chatIds.size) return
         val chatId = chatIds[index]
-        send(TdApi.GetChatHistory(chatId, 0, 0, 100, false)) { result ->
+        send(TdApi.GetChatHistory(chatId, 0, 0, 50, false)) { result ->
             val history = result as? TdApi.Messages
             history?.messages
                 ?.asSequence()
