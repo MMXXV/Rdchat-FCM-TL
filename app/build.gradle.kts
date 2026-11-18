@@ -518,14 +518,6 @@ val prepareRdchatAssets = tasks.register("prepareRdchatAssets") {
         )
 
         replaceExactlyOnce(
-            """window.AndroidBridge.clearActiveChat();
-                    console.warn("[RdChat] UID do contato nao encontrado; notificacoes permanecem habilitadas.");""",
-            """window.AndroidBridge.setActiveChatIdentity("", key);""",
-            "sincronização por email quando UID ainda não foi resolvido"
-        )
-
-
-        replaceExactlyOnce(
             """  async function registerOwnIdentity() {
     if (!currentUid || !me || !me.email) return;
     let code = codeNorm(me.code);
