@@ -6,6 +6,8 @@ on:
     paths:
       - "rdchat-fcm-worker/**"
       - "app/src/main/assets/index.html"
+      - "app/src/main/java/**/*.kt"
+      - "app/build.gradle.kts"
       - "app/src/main/AndroidManifest.xml"
       - "app/src/main/res/**/*.xml"
       - "app/google-services.json"
@@ -19,6 +21,8 @@ on:
     paths:
       - "rdchat-fcm-worker/**"
       - "app/src/main/assets/index.html"
+      - "app/src/main/java/**/*.kt"
+      - "app/build.gradle.kts"
       - "app/src/main/AndroidManifest.xml"
       - "app/src/main/res/**/*.xml"
       - "app/google-services.json"

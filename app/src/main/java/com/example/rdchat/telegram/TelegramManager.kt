@@ -202,7 +202,7 @@ class TelegramManager(
                     parameters.systemLanguageCode = "pt-BR"
                     parameters.deviceModel = android.os.Build.MODEL
                     parameters.systemVersion = android.os.Build.VERSION.RELEASE
-                    parameters.applicationVersion = BuildConfig.TELEGRAM_APPLICATION_VERSION
+                    parameters.applicationVersion = BuildConfig.VERSION_NAME
                     parameters.databaseEncryptionKey = loadOrCreateDatabaseKey()
                     send(parameters) { result ->
                         if (result is TdApi.Error) cb.onError("Falha ao configurar o banco Telegram: " + result.message)

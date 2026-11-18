@@ -26,6 +26,7 @@ const gradle = read("app/build.gradle.kts");
 const manifest = read("app/src/main/AndroidManifest.xml");
 const main = read("app/src/main/java/com/example/rdchat/MainActivity.kt");
 const webInterface = read("app/src/main/java/com/example/rdchat/telegram/WebAppInterface.kt");
+const telegramManager = read("app/src/main/java/com/example/rdchat/telegram/TelegramManager.kt");
 const fcmService = read("app/src/main/java/com/example/rdchat/MyFirebaseMessagingService.kt");
 const worker = read("rdchat-fcm-worker/src/index.js");
 const rules = read("firestore.rules");
@@ -101,6 +102,15 @@ function managerConfiguredCheck() {
   const telegramManager = read("app/src/main/java/com/example/rdchat/telegram/TelegramManager.kt");
   return telegramManager.includes("private fun configured()") && telegramManager.includes("apiHash.trim()");
 }
+
+
+check("gradle_uses_single_canonical_html_without_build_patches", !/replaceExactlyOnce|prepareRdchatAssets|generatedRdchatAssets/.test(gradle));
+check("tdlib_forces_production_dc_and_uses_real_app_version", telegramManager.includes("parameters.useTestDc = false") && telegramManager.includes("parameters.applicationVersion = BuildConfig.VERSION_NAME"));
+check("tdlib_receipts_mark_read_without_deleting_messages", telegramManager.includes("TdApi.ViewMessages") && !telegramManager.includes("TdApi.DeleteMessages"));
+check("tdlib_pushes_are_queued_until_session_is_ready", telegramManager.includes("pending_payloads") && telegramManager.includes("drainPendingPushNotifications") && telegramManager.includes("TdApi.ProcessPushNotification"));
+check("tdlib_restores_history_only_for_known_rdchat_chats", telegramManager.includes("TdApi.LoadChats") && telegramManager.includes("TdApi.GetChats") && telegramManager.includes("TdApi.GetChatHistory") && telegramManager.includes("isRdChatEnvelope"));
+check("telegram_read_receipt_waits_for_indexeddb_persistence", html.includes("persisted===true") && html.includes("RdChatReceiveFirebaseText(remote)") && !html.includes("ackMap"));
+check("composer_restores_text_after_unsuccessful_send", html.includes("if (!sent) {") && html.includes("if (!input.value.trim()) input.value = text;"));
 
 console.log(JSON.stringify({ checks, failures }, null, 2));
 if (failures.length) process.exitCode = 1;

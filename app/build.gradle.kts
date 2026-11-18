@@ -1,7 +1,5 @@
 import java.util.Properties
 
-// Migração temporária: materializar o HTML resultante antes de retirar os patches do Gradle.
-
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.google.services)
@@ -42,7 +40,6 @@ android {
 
         buildConfigField("int", "TELEGRAM_API_ID", telegramApiId.toString())
         buildConfigField("String", "TELEGRAM_API_HASH", "\"$escapedTelegramApiHash\"")
-        buildConfigField("String", "TELEGRAM_APPLICATION_VERSION", "\"1.0.7\"")
     }
 
     buildFeatures {
