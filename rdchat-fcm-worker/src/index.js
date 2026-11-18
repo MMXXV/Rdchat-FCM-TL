@@ -314,26 +314,33 @@ async function handleContactAdd(request, env) {
     addedAt: now,
     confirmed: true
   });
+  const [requesterLink, targetLink] = await Promise.all([
+    loadDocumentOrNull(env, '/users/' + encodeURIComponent(requesterUid) + '/contacts/' + encodeURIComponent(targetUid)),
+    loadDocumentOrNull(env, '/users/' + encodeURIComponent(targetUid) + '/contacts/' + encodeURIComponent(requesterUid))
+  ]);
   await commitFirestoreDocuments(env, [
     { path: '/users/' + encodeURIComponent(requesterUid) + '/contacts/' + encodeURIComponent(targetUid), data: contactRecord(target) },
     { path: '/users/' + encodeURIComponent(targetUid) + '/contacts/' + encodeURIComponent(requesterUid), data: contactRecord(requester) }
   ]);
 
-  // A pessoa que recebeu o vínculo é avisada em segundo plano para sincronizar a lista,
-  // mesmo quando o app do outro lado já está aberto ou foi suspenso.
-  const targetTokens = await loadUserTokens(env, targetUid);
-  const pushResults = await Promise.allSettled(targetTokens.map(token => sendFcm(env, token, {
-    type: 'rdchat_contact_added_v1',
-    queueId: `contact:${requesterUid}:${targetUid}`.slice(0, 160),
-    senderId: requesterUid,
-    senderEmail: requester.email,
-    senderName: requester.name,
-    senderCode: requester.code,
-    title: 'RdChat · Novo contato',
-    body: requester.name + ' adicionou você aos contatos.'
-  })));
-  return { ok: true, reciprocal: true, contact: target,
-    notified: pushResults.filter(result => result.status === 'fulfilled').length };
+  // Só envia o evento na primeira criação do vínculo no aparelho que recebe.
+  // A sincronização no boot migra relações antigas sem notificar repetidamente.
+  let notified = 0;
+  if (!targetLink) {
+    const targetTokens = await loadUserTokens(env, targetUid);
+    const pushResults = await Promise.allSettled(targetTokens.map(token => sendFcm(env, token, {
+      type: 'rdchat_contact_added_v1',
+      queueId: ('contact:' + requesterUid + ':' + targetUid).slice(0, 160),
+      senderId: requesterUid,
+      senderEmail: requester.email,
+      senderName: requester.name,
+      senderCode: requester.code,
+      title: 'RdChat · Novo contato',
+      body: requester.name + ' adicionou você aos contatos.'
+    })));
+    notified = pushResults.filter(result => result.status === 'fulfilled').length;
+  }
+  return { ok: true, reciprocal: true, alreadyLinked: !!requesterLink && !!targetLink, contact: target, notified };
 }
 
 async function handleContactsList(request, env) {
