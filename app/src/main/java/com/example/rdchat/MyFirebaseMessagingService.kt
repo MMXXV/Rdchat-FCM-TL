@@ -80,6 +80,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         if (type.startsWith("rdchat_ack")) return
 
         val senderId = data["senderId"] ?: data["fromUid"] ?: "unknown"
+        val senderEmail = data["senderEmail"]?.trim()?.lowercase().orEmpty()
         val title = data["title"]?.takeIf { it.isNotBlank() } ?: "RdChat"
         val body = data["body"]?.takeIf { it.isNotBlank() } ?: when {
             type == "rdchat_wake_v1" -> "Há uma mensagem ou mídia aguardando."
@@ -112,7 +113,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             persistPendingPayload(this, payloadJson)
         }
 
-        if (shouldSuppressNotification(senderId)) {
+        if (shouldSuppressNotification(senderId, senderEmail)) {
             Log.i("RDCHAT_FCM", "NOTIFICATION_SUPPRESSED same_sender_chat_open senderId=$senderId")
         } else {
             showDataNotification(title, body, type, data, senderId)
@@ -155,28 +156,23 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             }
         }.start()
     }
-    private fun shouldSuppressNotification(senderId: String): Boolean {
-        if (senderId.isBlank() || senderId == "unknown") return false
+    private fun shouldSuppressNotification(senderId: String, senderEmail: String): Boolean {
+        if ((senderId.isBlank() || senderId == "unknown") && senderEmail.isBlank()) return false
 
-        // IMPORTANCE_VISIBLE inclui a Activity visivel na tela.
-        // Se o app estiver minimizado ou fechado, a notificacao sera exibida.
+        // IMPORTANCE_VISIBLE inclui a Activity visível. O chat precisa ser exatamente o remetente.
         val processInfo = ActivityManager.RunningAppProcessInfo()
         ActivityManager.getMyMemoryState(processInfo)
-
-        val appIsVisible =
-            processInfo.importance <=
-                ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE
-
+        val appIsVisible = processInfo.importance <= ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE
         if (!appIsVisible) return false
 
-        val activeUid = getSharedPreferences(
-            "rdchat_active",
-            MODE_PRIVATE
-        ).getString("active_sender_uid", "").orEmpty()
-
-        // Suprime somente quando o contato que enviou a mensagem
-        // e exatamente o contato da conversa atualmente aberta.
-        return activeUid.isNotBlank() && activeUid.equals(senderId, ignoreCase = true)
+        val prefs = getSharedPreferences("rdchat_active", MODE_PRIVATE)
+        val activeUid = prefs.getString("active_sender_uid", "").orEmpty()
+        val activeEmail = prefs.getString("active_sender_email", "").orEmpty().trim().lowercase()
+        val sameUid = senderId.isNotBlank() && senderId != "unknown" &&
+            activeUid.isNotBlank() && activeUid.equals(senderId, ignoreCase = true)
+        val sameEmail = senderEmail.isNotBlank() && activeEmail.isNotBlank() &&
+            activeEmail == senderEmail
+        return sameUid || sameEmail
     }
     private fun showDataNotification(
         title: String,
@@ -200,22 +196,34 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             }
         }
 
+        val payload = JSONObject().apply { data.forEach { (key, value) -> put(key, value) } }.toString()
         val launchIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra("rdchat_notification_payload", JSONObject(data as Map<*, *>).toString())
+            putExtra("rdchat_notification_payload", payload)
             putExtra("rdchat_room_id", data["roomId"].orEmpty())
             putExtra("rdchat_message_id", data["messageId"] ?: data["id"].orEmpty())
             putExtra("rdchat_sender_id", senderId)
+            putExtra("rdchat_sender_email", senderEmail)
         }
+        val requestCode = (data["messageId"] ?: data["id"] ?: payload).hashCode()
         val pendingIntent = launchIntent?.let {
-            PendingIntent.getActivity(this, 0, it, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            PendingIntent.getActivity(this, requestCode, it, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         }
 
         val notification = NotificationCompat.Builder(this, channelId)
             .setSmallIcon(R.drawable.rdchat_notification)
-            .setContentTitle(title)
-            .setContentText(body)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setContentTitle("RdChat")
+            .setContentText("Nova mensagem recebida")
+            .setStyle(NotificationCompat.BigTextStyle().bigText(
+                title.take(80) + "\\n" + body.take(180)
+            ))
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setPublicVersion(NotificationCompat.Builder(this, channelId)
+                .setSmallIcon(R.drawable.rdchat_notification)
+                .setContentTitle("RdChat")
+                .setContentText("Nova mensagem recebida")
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .build())
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
             .apply { if (pendingIntent != null) setContentIntent(pendingIntent) }
