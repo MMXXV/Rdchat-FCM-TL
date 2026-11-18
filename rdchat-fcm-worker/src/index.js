@@ -538,39 +538,41 @@ async function telegramGetFile(env, fileId) {
 
 async function sendMediaWake(env, message) {
   const recipients = Array.isArray(message.toUids) ? message.toUids : [];
-  const failures = [];
-  let sent = 0;
   const preview = mediaNotificationText(message.kind, message.mediaName);
-  for (const recipientUid of recipients) {
+  const deliveries = await Promise.all(recipients.map(async recipientUid => {
     let tokens = [];
     try {
       tokens = await loadUserTokens(env, recipientUid);
     } catch (error) {
-      failures.push({ uid: recipientUid, code: String(error.message || error).slice(0, 180) });
-      continue;
+      return { sent: 0, failures: [{ uid: recipientUid, code: String(error.message || error).slice(0, 180) }] };
     }
-    for (const token of tokens) {
-      try {
-        await sendFcm(env, token, {
-          type: 'rdchat_wake_v1',
-          queueId: ('wake:' + message.id + ':' + recipientUid).slice(0, 160),
-          id: message.id,
-          roomId: message.roomId,
-          messageId: message.id,
-          recipientUid,
-          senderId: message.fromUid,
-          senderName: message.fromName,
-          title: 'RdChat · ' + message.fromName,
-          body: preview,
-          kind: message.kind
-        });
-        sent++;
-      } catch (error) {
-        failures.push({ uid: recipientUid, code: String(error.message || error).slice(0, 180) });
-      }
-    }
-  }
-  return { sent, failures };
+    const results = await Promise.allSettled(tokens.map(token => sendFcm(env, token, {
+      type: 'rdchat_wake_v1',
+      queueId: ('wake:' + message.id + ':' + recipientUid).slice(0, 160),
+      id: message.id,
+      roomId: message.roomId,
+      messageId: message.id,
+      recipientUid,
+      senderId: message.fromUid,
+      senderEmail: message.fromEmail || '',
+      senderCode: message.fromCode || '',
+      senderName: message.fromName,
+      title: 'RdChat · ' + message.fromName,
+      body: preview,
+      kind: message.kind
+    })));
+    return {
+      sent: results.filter(result => result.status === 'fulfilled').length,
+      failures: results.filter(result => result.status === 'rejected').map(result => ({
+        uid: recipientUid,
+        code: String(result.reason && result.reason.message || result.reason).slice(0, 180)
+      }))
+    };
+  }));
+  return {
+    sent: deliveries.reduce((total, result) => total + result.sent, 0),
+    failures: deliveries.flatMap(result => result.failures)
+  };
 }
 
 
