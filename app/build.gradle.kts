@@ -1,5 +1,7 @@
 import java.util.Properties
 
+// Migração temporária: materializar o HTML resultante antes de retirar os patches do Gradle.
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.google.services)
