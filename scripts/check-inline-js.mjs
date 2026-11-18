@@ -60,7 +60,10 @@ const checks = {
   phoneEyeTogglesMask: has("phone.type=showing?'tel':'password'"),
   phoneEyeHasAccessibleLabel: has("phoneEye.setAttribute('aria-label',showing?'Ocultar número':'Mostrar número')"),
   phoneEyeUsesEyeIcon: phoneEyeMarkup.includes("M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"),
-  phoneInputAllowsInternationalCharacters: has("replace(/[^\\d+()\\s.-]/g,'')"),
+  phoneLoginNormalizesBrazilianNationalNumber: has("var digits=String($('rdTgPhone').value||'').replace(/\\\\D/g,'')") &&
+    has("digits.length===12||digits.length===13") &&
+    has("var phone='+55'+digits") &&
+    has("O +55 será adicionado automaticamente."),
   pinEnterDoesNotSubmitLocalRegisterInModeB: has("event.stopImmediatePropagation();"),
   preservesOriginalUserPasswordFlow: has("return originalSubmitAuthMode&&originalSubmitAuthMode.apply(this,arguments)"),
   nativeCameraMicPermissionBridge: has("requestCameraAndMicrophonePermissions"),
