@@ -1,8 +1,8 @@
 import fs from "node:fs";
 
-const htmlPath = process.argv[2] || "app/build/generated/rdchatAssets/index.html";
+const htmlPath = process.argv[2] || "app/src/main/assets/index.html";
 if (!fs.existsSync(htmlPath)) {
-  throw new Error(`HTML gerado do RdChat não encontrado: ${htmlPath}`);
+  throw new Error(`HTML canônico do RdChat não encontrado: ${htmlPath}`);
 }
 const html = fs.readFileSync(htmlPath, "utf8");
 const checks = [

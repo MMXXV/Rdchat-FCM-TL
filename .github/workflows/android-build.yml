@@ -50,8 +50,13 @@ jobs:
         env:
           TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
         run: ./gradlew --no-daemon :app:assembleDebug :app:testDebugUnitTest
-      - name: Verify Brazilian phone login generated into APK assets
-        run: node scripts/check-generated-phone-login.mjs app/build/generated/rdchatAssets/index.html
+      - name: Verify Brazilian phone login inside the compiled APK asset
+        run: |
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          unzip -p "$APK" assets/index.html > /tmp/rdchat-apk-index.html
+          test -s /tmp/rdchat-apk-index.html
+          node scripts/check-generated-phone-login.mjs /tmp/rdchat-apk-index.html
       - name: Verify universal APK native architectures
         run: |
           APK="app/build/outputs/apk/debug/app-debug.apk"
