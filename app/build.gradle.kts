@@ -248,6 +248,270 @@ val prepareRdchatAssets = tasks.register("prepareRdchatAssets") {
             html.contains("rdchat-login-number-reference-v1")) {
             "O HTML gerado não contém todas as alterações visuais do modo Com número."
         }
+
+        replaceExactlyOnce(
+            """async function sendMsg() {
+    if (!cur() || blockedGuard()) return;
+    const input = $('msgInput'), text = input.value.trim();
+    if (!text) return;
+    const activeMeta = cur(), outgoingId = uid();
+    if (activeMeta.isGroup && (!Array.isArray(activeMeta.members) || !activeMeta.members.length)) {
+      /* v1.0.5: grupo envia com qualquer número de membros */
+    }
+    if ((!activeMeta || !activeMeta.self) && typeof window.rdSecurityValidateText === 'function' && !window.rdSecurityValidateText(text, outgoingId)) return;
+    try {
+      const sent = await postBubble(currentKey, { id: outgoingId, securityValidated: true, kind: 'text', text: text.slice(0, 5000), reply: replyTo });
+      if (!sent) return;
+      cancelReply(); input.value = ''; toggleSendButton(); resizeMsgInput();
+    } catch (error) {
+      console.error('RdChat: não foi possível salvar a mensagem.', error);
+      toast('Não foi possível salvar a mensagem. O texto foi mantido para você tentar novamente.');
+    }
+  }""",
+            """async function sendMsg() {
+    if (!cur() || blockedGuard()) return;
+    const input = $('msgInput'), text = input.value.trim();
+    if (!text) return;
+    const activeMeta = cur(), outgoingId = uid(), sendingKey = currentKey, reply = replyTo;
+    if (activeMeta.isGroup && (!Array.isArray(activeMeta.members) || !activeMeta.members.length)) {
+      /* v1.0.5: grupo envia com qualquer número de membros */
+    }
+    if ((!activeMeta || !activeMeta.self) && typeof window.rdSecurityValidateText === 'function' && !window.rdSecurityValidateText(text, outgoingId)) return;
+    let operation;
+    try {
+      operation = postBubble(sendingKey, { id: outgoingId, securityValidated: true, kind: 'text', text: text.slice(0, 5000), reply });
+      cancelReply();
+      input.value = '';
+      toggleSendButton();
+      resizeMsgInput();
+      const sent = await operation;
+      if (!sent) return;
+    } catch (error) {
+      console.error('RdChat: não foi possível salvar a mensagem.', error);
+      if (!input.value.trim()) input.value = text;
+      toggleSendButton(); resizeMsgInput();
+      toast('Não foi possível salvar a mensagem. O texto foi restaurado para você tentar novamente.');
+    }
+  }""",
+            "limpeza imediata do compositor após envio"
+        )
+
+        replaceExactlyOnce(
+            """    // Mensagens de texto do Firebase usam recibo de leitura no Firestore; mídias continuam com recibo P2P.
+    by && Object.values(by).flat().forEach(x => {
+      if (x && x.transport === 'firebase' && x.firebaseRoomId && window.RdChatFirebase && window.RdChatFirebase.markTextRead) {
+        window.RdChatFirebase.markTextRead(x.firebaseRoomId, x.id).catch(error => console.warn('RdChat: recibo de leitura Firebase pendente.', error));
+      }
+    });
+""",
+            "",
+            "remoção do segundo envio de recibos de leitura"
+        )
+
+        replaceExactlyOnce(
+            """window.rdRequireBirthDate=function(feature){
+    if(!me||window.rdHasBirthDate())return false;
+    try{var __c=window.__rd&&window.__rd.cur&&window.__rd.cur();if(__c&&(__c.self||__c.isGroup))return false;}catch(_){}
+    say((feature?String(feature)+': ':'')+'para proteger menores e liberar mídias, GIFs, arquivos, foto de perfil e chamadas, informe sua data de nascimento em Perfil. Sem a data, mensagens de texto continuam disponíveis com filtro reforçado.');
+    return true;
+  };""",
+            """window.rdRequireBirthDate=function(feature){
+    if(!me||window.rdHasBirthDate())return false;
+    try{var __c=window.__rd&&window.__rd.cur&&window.__rd.cur();if(__c&&(__c.self||__c.isGroup))return false;}catch(_){}
+    Promise.resolve(window.rdEnsureBirthDate(true)).then(function(saved){
+      if(saved){try{if(typeof toast==='function')toast('Idade salva. Tente enviar novamente.');}catch(_){}}
+    }).catch(function(error){console.error('RdChat: não foi possível abrir o formulário de idade.',error);});
+    return true;
+  };""",
+            "abertura real do formulário de idade ao bloquear mídia"
+        )
+
+        replaceExactlyOnce(
+            """  // Sem banner nem diálogo automático: a data é solicitada exclusivamente ao tocar em Perfil.
+""",
+            """  // A data fica disponível em Ajustes > Sua idade e é aberta quando um recurso exigir.
+""",
+            "texto da política de idade"
+        )
+
+        replaceExactlyOnce(
+            """    const ageNotice=$('rdBirthGateBanner');
+    if(!window.rdHasBirthDate || !window.rdHasBirthDate()){
+      if(!ageNotice){ageNotice=document.createElement('div');ageNotice.id='rdBirthGateBanner';var ph=document.querySelector('#screen-profile .profile-header');if(ph&&ph.parentNode)ph.parentNode.insertBefore(ageNotice,ph.nextSibling);}
+      if(ageNotice)ageNotice.textContent='Informe sua data de nascimento para liberar fotos, vídeos, GIFs, arquivos, foto de perfil e chamadas. Mensagens de texto continuam disponíveis com proteção reforçada.';
+    }else if(ageNotice)ageNotice.remove();
+""",
+            """    var ageNotice=$('rdBirthGateBanner'); if(ageNotice)ageNotice.remove();
+""",
+            "remoção do banner de idade do Perfil"
+        )
+
+        replaceExactlyOnce(
+            """    /* A data de nascimento é solicitada na primeira abertura do perfil, não na tela de login. */
+    setTimeout(function(){ try { if (typeof window.rdEnsureBirthDate === 'function') window.rdEnsureBirthDate(); } catch(e) { console.warn('RdChat: não foi possível abrir o diálogo de nascimento.', e); } }, 260);
+""",
+            "",
+            "remoção do prompt de idade do Perfil"
+        )
+
+        replaceExactlyOnce(
+            """var explanatory=oldYear ? ('O cadastro antigo guardou apenas o ano '+oldYear+'. Informe a data completa para classificar a conta.') : 'Sua data é usada para aplicar as proteções adequadas à idade. Sem informar, você ainda poderá ler e enviar mensagens de texto, mas fotos, vídeos, GIFs, arquivos, foto de perfil e chamadas ficarão limitados. O pedido aparece ao tocar em Perfil até salvar uma data válida.';""",
+            """var explanatory=oldYear ? ('O cadastro antigo guardou apenas o ano '+oldYear+'. Informe a data completa para classificar a conta.') : 'Sua data é usada para aplicar as proteções adequadas à idade. Sem informar, você ainda poderá ler e enviar mensagens de texto, mas fotos, vídeos, GIFs, arquivos, foto de perfil e chamadas ficarão limitados. Você também pode abrir este formulário em Ajustes > Sua idade.';""",
+            "orientação para abrir Sua idade em Ajustes"
+        )
+
+        replaceExactlyOnce(
+            """if(!r||r.value!=='save') { try{me.birthDateGatePending=true;saveProfile();}catch(_){} say('Você pode continuar usando mensagens de texto. Recursos de mídia e chamadas ficam limitados até informar a data em Perfil.'); return false; }""",
+            """if(!r||r.value!=='save') { try{me.birthDateGatePending=true;saveProfile();}catch(_){} say('Você pode continuar usando mensagens de texto. Recursos de mídia e chamadas ficam limitados até informar a data em Ajustes > Sua idade.'); return false; }""",
+            "orientação após adiar idade"
+        )
+
+        replaceExactlyOnce(
+            """  async function recBegin(e) {
+    if (!cur() || blockedGuard() || micBusy) return;
+    skipLock(30000);""",
+            """  async function recBegin(e) {
+    if (!cur() || blockedGuard() || micBusy) return;
+    if (me && window.rdHasBirthDate && !window.rdHasBirthDate()) { window.rdRequireBirthDate('Enviar áudio'); return; }
+    skipLock(30000);""",
+            "bloqueio de áudio com abertura do formulário de idade"
+        )
+
+        replaceExactlyOnce(
+            """  async function askNativeMic() {
+    const b = window.AndroidBridge; if (!b) return false;
+    for (const fn of ['requestMicrophonePermission', 'requestMicPermission', 'requestAudioPermission', 'requestRecordAudioPermission']) {
+      if (typeof b[fn] === 'function') { try { b[fn](); await sleep(1600); return true; } catch (e) {} }
+    }
+    return false;
+  }""",
+            """  async function askNativeMic() {
+    const b = window.AndroidBridge;
+    if (!b || typeof b.requestMicrophonePermissionWithCallback !== 'function') return false;
+    if (!window.__rdNativePermissionResolvers) {
+      window.__rdNativePermissionResolvers = Object.create(null);
+      window.onRdChatNativePermissionResult = function(id, granted) {
+        const resolve = window.__rdNativePermissionResolvers[String(id || '')];
+        if (!resolve) return;
+        delete window.__rdNativePermissionResolvers[String(id || '')];
+        resolve(granted === true);
+      };
+    }
+    const id = 'mic-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+    return await new Promise(resolve => {
+      const timer = setTimeout(() => {
+        delete window.__rdNativePermissionResolvers[id];
+        resolve(false);
+      }, 30000);
+      window.__rdNativePermissionResolvers[id] = granted => { clearTimeout(timer); resolve(!!granted); };
+      try { b.requestMicrophonePermissionWithCallback(id); }
+      catch (error) { clearTimeout(timer); delete window.__rdNativePermissionResolvers[id]; resolve(false); }
+    });
+  }""",
+            "espera real pela resposta da permissão do microfone"
+        )
+
+        replaceExactlyOnce(
+            """    if (window.AndroidBridge && typeof window.AndroidBridge.showNotification === 'function') {
+      try { window.AndroidBridge.showNotification(String(m.name || 'RdChat'), body); return; } catch (e) {}
+    }""",
+            """    // No APK Android as notificações são centralizadas no FCM nativo para evitar duplicidade.
+    if (window.AndroidBridge) return;""",
+            "notificações Android centralizadas no FCM"
+        )
+
+        replaceExactlyOnce(
+            """                if (uid && !String(uid).includes("@")) {
+                    window.AndroidBridge.setActiveChatUid(String(uid));
+                } else {
+                    window.AndroidBridge.clearActiveChat();
+                    console.warn("[RdChat] UID do contato nao encontrado; notificacoes permanecem habilitadas.");
+                }""",
+            """                if (typeof window.AndroidBridge.setActiveChatIdentity === "function") {
+                    window.AndroidBridge.setActiveChatIdentity(uid && !String(uid).includes("@") ? String(uid) : "", key);
+                } else if (uid && !String(uid).includes("@")) {
+                    window.AndroidBridge.setActiveChatUid(String(uid));
+                } else {
+                    window.AndroidBridge.clearActiveChat();
+                }""",
+            "sincronização da conversa ativa por UID e email"
+        )
+
+        replaceExactlyOnce(
+            """      const senderUid = String(payload && (payload.senderId || payload.fromUid) || '');
+      const roomId = String(payload && payload.roomId || '');
+      let key = '';
+      const contact = contacts.find(item => senderUid && String(item.firebaseUid || '') === senderUid);
+      if (contact) key = contact.email;
+      if (!key && roomId) {
+        const match = Object.keys(meta).find(candidate => String((meta[candidate] || {}).firebaseRoomId || '') === roomId);
+        if (match) key = match;
+      }
+      if (!key) { toast('Notificação recebida. Atualize sua lista de conversas para localizar o contato.'); return false; }""",
+            """      const senderUid = String(payload && (payload.senderId || payload.fromUid) || '');
+      const senderEmail = normEmail(payload && (payload.senderEmail || payload.fromEmail) || '');
+      const senderName = String(payload && (payload.senderName || payload.title || '') || 'Contato').replace(/^RdChat\\s*[·-]\\s*/,'').slice(0,40);
+      const senderCode = String(payload && payload.senderCode || '').replace(/\\D/g,'').slice(0,6);
+      const roomId = String(payload && payload.roomId || '');
+      let key = '';
+      let contact = contacts.find(item => senderUid && String(item.firebaseUid || '') === senderUid);
+      if (!contact && senderEmail) contact = contacts.find(item => normEmail(item.email) === senderEmail);
+      if (contact) key = contact.email;
+      if (!key && roomId) {
+        const match = Object.keys(meta).find(candidate => String((meta[candidate] || {}).firebaseRoomId || '') === roomId);
+        if (match) key = match;
+      }
+      if (!key && senderEmail && /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(senderEmail)) {
+        contact = await addContact(senderEmail, senderName, { code: senderCode, confirmed: true });
+        if (contact) {
+          contact.firebaseUid = senderUid;
+          if (senderCode) contact.code = senderCode;
+          try { await dbPut('contacts', { email: contact.email }, contact); } catch (_) {}
+          key = contact.email;
+        }
+      }
+      if (!key) {
+        try { if (typeof window.rdChatSyncReciprocalContacts === 'function') await window.rdChatSyncReciprocalContacts(); } catch (_) {}
+        contact = contacts.find(item => (senderUid && String(item.firebaseUid || '') === senderUid) || (senderEmail && normEmail(item.email) === senderEmail));
+        if (contact) key = contact.email;
+      }
+      if (!key) { toast('Não foi possível localizar a conversa desta notificação. Atualize os contatos e tente novamente.'); return false; }""",
+            "abertura direta do contato remetente ao tocar notificação"
+        )
+
+        val ageSettings = """
+<div class="settings-section rd-age-settings-section">
+  <div class="label">CONTA</div>
+  <div class="settings-list">
+    <div class="settings-item" role="button" tabindex="0" onclick="window.rdEnsureBirthDate&&window.rdEnsureBirthDate(true)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();window.rdEnsureBirthDate&&window.rdEnsureBirthDate(true);}">
+      <div class="si-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 9h18M8 13h3M8 17h7"/></svg></div>
+      <div class="si-body"><div class="si-title">Sua idade</div><div class="si-sub" id="rdSettingsAgeSubtitle">Informe sua data de nascimento e ajuste a proteção da conta</div></div>
+      <div class="chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></div>
+    </div>
+    <div class="settings-item" role="button" tabindex="0" onclick="window.AndroidBridge&&window.AndroidBridge.requestAppPermissions&&window.AndroidBridge.requestAppPermissions()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();window.AndroidBridge&&window.AndroidBridge.requestAppPermissions&&window.AndroidBridge.requestAppPermissions();}">
+      <div class="si-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7l8-4z"/><path d="M9 12l2 2 4-4"/></svg></div>
+      <div class="si-body"><div class="si-title">Permissões do dispositivo</div><div class="si-sub">Microfone, câmera e notificações</div></div>
+      <div class="chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></div>
+    </div>
+  </div>
+</div>
+""".trimIndent()
+        replaceExactlyOnce(
+            """<div class="settings-section">
+              <div class="label">SOBRE</div>""",
+            """$ageSettings
+            <div class="settings-section">
+              <div class="label">SOBRE</div>""",
+            "opções Sua idade e permissões em Ajustes"
+        )
+
+        replaceExactlyOnce(
+            """    const plugins = window.Capacitor && window.Capacitor.Plugins;""",
+            """    try { if (window.AndroidBridge && typeof window.AndroidBridge.requestAppPermissions === 'function') window.AndroidBridge.requestAppPermissions(); } catch (_) {}
+      const plugins = window.Capacitor && window.Capacitor.Plugins;""",
+            "solicitação nativa de permissões na tela inicial"
+        )
+
         htmlFile.writeText(html, Charsets.UTF_8)
     }
 }
