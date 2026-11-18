@@ -15,6 +15,28 @@ const checks = [
   ["ponte TDLib permanece conectada", html.includes("T.iniciarLogin(phone)")],
   ["tela Com número mantém identidade visual de referência", html.includes("rdchat-login-number-reference-v1")]
 ];
+const generatedChecks = [
+  ["formulário de idade abre quando um recurso é bloqueado", html.includes("window.rdEnsureBirthDate(true)")],
+  ["Ajustes oferece a opção Sua idade", html.includes("Sua idade") && html.includes("rdSettingsAgeSubtitle")],
+  ["permissão do microfone espera resposta do Android", html.includes("requestMicrophonePermissionWithCallback") && html.includes("window.onRdChatNativePermissionResult") && !html.includes("await sleep(1600)")],
+  ["conversa ativa sincroniza UID e e-mail", html.includes("setActiveChatIdentity(uid && !String(uid).includes")],
+  ["lista de contatos usa sincronização recíproca", html.includes("rdchat-reciprocal-contact-sync-v1") && html.includes("syncContactsFromWorker")],
+  ["FCM de contato não vira alerta de mensagem", html.includes("rdchat_contact_added_v1")],
+  ["notificação contém identidade para abrir a conversa", html.includes("senderEmail = normEmail") && html.includes("RdChatOpenConversationFromNotification")],
+  ["recibos do Firestore são enviados em lote", html.includes("markTextReadBatch")],
+  ["WebView não cria notificação duplicada no Android", html.includes("if (window.AndroidBridge) return;")],
+  ["câmera e microfone ficam disponíveis sob demanda em Ajustes", html.includes("window.AndroidBridge&&window.AndroidBridge.requestAppPermissions") && !html.includes("native.requestAppPermissions()")]
+];
+checks.push(...generatedChecks);
+const sendStart = html.indexOf("async function sendMsg() {");
+let composerClearsBeforeAwait = false;
+if (sendStart >= 0) {
+  const sendBlock = html.slice(sendStart, sendStart + 2200);
+  const clearAt = sendBlock.indexOf("input.value = '';");
+  const awaitAt = sendBlock.indexOf("const sent = await operation;");
+  composerClearsBeforeAwait = clearAt >= 0 && awaitAt > clearAt;
+}
+checks.push(["compositor limpa antes da confirmação remota", composerClearsBeforeAwait]);
 for (const [name, ok] of checks) {
   console.log(`${ok ? "PASS" : "FAIL"} ${name}`);
 }
