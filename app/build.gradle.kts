@@ -708,7 +708,395 @@ val prepareRdchatAssets = tasks.register("prepareRdchatAssets") {
     }
     const c = await addContact(foundData.email, foundData.name, { code: foundData.code || '' });
     closeOv('foundOverlay'); closeSearch();
-    toast(`${c.name} adicionado aos contatos`);
+    toast(`${'
+  }""",
+            """  async function confirmAddFound() {
+    if (!foundData) return;
+    if (!window.RdChatFirebase || typeof window.RdChatFirebase.addContactByCode !== 'function') {
+      toast('A sincronização de contatos não está disponível. Verifique a conexão com o RdChat.');
+      return;
+    }
+    try {
+      const result = await window.RdChatFirebase.addContactByCode(foundData.code || '');
+      const profile = result && result.contact;
+      if (!profile || !profile.email || !profile.uid) throw new Error('O servidor não confirmou o vínculo recíproco.');
+      const email = normEmail(profile.email);
+      if (profile.avatarData) {
+        const previous = peerProfileByEmail.get(email) || {};
+        peerProfileByEmail.set(email, { ...previous, name: profile.name || foundData.name, avatarData: profile.avatarData, profileMediaVersion: profile.profileMediaVersion || '' });
+      } else if (foundData.photo) {
+        const previous = peerProfileByEmail.get(email) || {};
+        peerProfileByEmail.set(email, { ...previous, name: foundData.name || previous.name || email.split('@')[0], avatarData: foundData.photo });
+      }
+      const contact = await addContact(email, profile.name || foundData.name, { code: profile.code || foundData.code || '', confirmed: true });
+      if (!contact) throw new Error('O contato está oculto neste aparelho. Remova-o da lista de ocultos para adicionar novamente.');
+      contact.firebaseUid = String(profile.uid);
+      contact.confirmed = true;
+      contact.code = profile.code || foundData.code || contact.code;
+      contact.avatarData = profile.avatarData || contact.avatarData || '';
+      contact.profileMediaVersion = profile.profileMediaVersion || contact.profileMediaVersion || '';
+      contact.profileMediaType = profile.profileMediaType || contact.profileMediaType || '';
+      contact.profileMediaName = profile.profileMediaName || contact.profileMediaName || '';
+      await dbPut('contacts', { email }, contact);
+      try { await window.RdChatFirebase.resolveContactUid(email); } catch (error) { console.warn('RdChat: vínculo recíproco salvo; atualização dos listeners pendente.', error); }
+      closeOv('foundOverlay'); closeSearch();
+      toast(contact.name + ' adicionado nos dois aparelhos');
+      if (typeof window.rdChatSyncReciprocalContacts === 'function') window.rdChatSyncReciprocalContacts().catch(error => console.warn('RdChat: sincronização recíproca pendente.', error));
+    } catch (error) {
+      console.error('RdChat: não foi possível criar o vínculo recíproco.', error);
+      toast(String(error && error.message || 'Não foi possível adicionar o contato nos dois aparelhos.'));
+    }
+  }""",
+            "adição recíproca de contato pelo código de seis dígitos"
+        )
+
+        val reciprocalRuntime = """
+<script id="rdchat-reciprocal-contact-sync-v1">
+(function(){
+  'use strict';
+  async function syncReciprocalContacts(){
+    var fb=window.RdChatFirebase;
+    if(!fb||typeof fb.syncContactsFromWorker!=='function') return 0;
+    var profiles=await fb.syncContactsFromWorker();
+    var added=0;
+    for(var i=0;i<profiles.length;i++){
+      var profile=profiles[i]||{};
+      var email=String(profile.email||'').trim().toLowerCase();
+      if(!email||!profile.uid||email===String(me&&me.email||'').trim().toLowerCase()) continue;
+      var hidden=(prefs&&Array.isArray(prefs.hiddenContacts)?prefs.hiddenContacts:[]).map(function(v){return String(v||'').trim().toLowerCase();});
+      if(hidden.indexOf(email)>=0) continue;
+      var contact=contacts.find(function(item){return String(item.email||'').trim().toLowerCase()===email;});
+      if(!contact) contact=await addContact(email,profile.name||'Contato',{code:profile.code||'',confirmed:true});
+      if(!contact) continue;
+      contact.firebaseUid=String(profile.uid);
+      contact.confirmed=true;
+      if(profile.code) contact.code=String(profile.code);
+      if(profile.name) contact.name=String(profile.name).slice(0,40);
+      if(profile.avatarData) contact.avatarData=String(profile.avatarData);
+      if(profile.profileMediaVersion) contact.profileMediaVersion=String(profile.profileMediaVersion);
+      if(profile.profileMediaType) contact.profileMediaType=String(profile.profileMediaType);
+      if(profile.profileMediaName) contact.profileMediaName=String(profile.profileMediaName);
+      await dbPut('contacts',{email:email},contact);
+      peerProfileByEmail.set(email,Object.assign({},peerProfileByEmail.get(email)||{},{
+        name:contact.name,avatarData:contact.avatarData||'',profileMediaVersion:contact.profileMediaVersion||'',
+        profileMediaType:contact.profileMediaType||'',profileMediaName:contact.profileMediaName||'',code:contact.code||'',uid:contact.firebaseUid
+      }));
+      try { await fb.resolveContactUid(email); } catch(error) { console.warn('RdChat: listeners do contato serão sincronizados depois.',error); }
+      added++;
+    }
+    try { renderContacts(); } catch(_){}
+    return added;
+  }
+  window.rdChatSyncReciprocalContacts=syncReciprocalContacts;
+  window.addEventListener('rdchat-firebase-ready',function(){syncReciprocalContacts().catch(function(error){console.warn('RdChat: sincronização de contatos recíprocos pendente.',error);});});
+  window.addEventListener('rdchat:fcm',function(event){
+    var payload=event&&event.detail||{};
+    if(payload.type==='rdchat_contact_added_v1'){
+      syncReciprocalContacts().then(function(){try{toast((payload.senderName||'Um contato')+' adicionou você aos contatos.');}catch(_){}}).catch(function(error){console.warn('RdChat: atualização de contato recebida por FCM pendente.',error);});
+    }
+  });
+})();
+</script>
+""".trimIndent()
+        replaceExactlyOnce("</body>", "$reciprocalRuntime\\n</body>", "sincronização de contatos recíprocos e FCM")
+
+        replaceExactlyOnce(
+            """  async function markTextRead(roomId, messageId) {
+    if (!initialized) await initializeFirebase();
+    if (!fs || !currentUid || !roomId || !messageId) return;
+    const ref = fs.collection('textConversations').doc(String(roomId)).collection('messages').doc(String(messageId));
+    await ref.update({ deliveredBy: firebase.firestore.FieldValue.arrayUnion(currentUid), readBy: firebase.firestore.FieldValue.arrayUnion(currentUid) });
+  }""",
+            """  async function markTextRead(roomId, messageId) {
+    return markTextReadBatch(roomId, [messageId]);
+  }
+
+  async function markTextReadBatch(roomId, messageIds) {
+    if (!initialized) await initializeFirebase();
+    if (!fs || !currentUid || !roomId || !Array.isArray(messageIds)) return;
+    const ids = Array.from(new Set(messageIds.map(id => String(id || '').trim()).filter(Boolean)));
+    if (!ids.length) return;
+    const update = { deliveredBy: firebase.firestore.FieldValue.arrayUnion(currentUid), readBy: firebase.firestore.FieldValue.arrayUnion(currentUid) };
+    for (let offset = 0; offset < ids.length; offset += 450) {
+      const batch = fs.batch();
+      ids.slice(offset, offset + 450).forEach(id => {
+        batch.update(fs.collection('textConversations').doc(String(roomId)).collection('messages').doc(id), update);
+      });
+      await batch.commit();
+    }
+  }""",
+            "recibos de leitura em lote por conversa"
+        )
+
+        replaceExactlyOnce(
+            """    markTextRead: acknowledgeTextRead,""",
+            """    markTextRead: acknowledgeTextRead,
+    markTextReadBatch: markTextReadBatch,""",
+            "exposição do recibo de leitura em lote"
+        )
+
+        replaceExactlyOnce(
+            """  function sendRead(email, list) {
+    const legacy = [];
+    list.forEach(x => {
+      if (!Number.isFinite(Number(x.seenAt)) || Number(x.seenAt) <= 0) x.seenAt = Date.now();
+      if (x.transport === 'firebase' && x.firebaseRoomId) {
+        if (window.RdChatFirebase && window.RdChatFirebase.markTextRead) {
+          window.RdChatFirebase.markTextRead(x.firebaseRoomId, x.id).then(() => { x.rd = true; saveMsg(x); }).catch(error => console.warn('RdChat: recibo Firebase pendente.', error));
+        }
+      } else legacy.push(x);
+    });
+    if (!legacy.length) return;
+    const readAtById = {};
+    legacy.forEach(x => { readAtById[x.id] = Number(x.seenAt); });
+    if (!sendTo(email, { t: 'read', ids: legacy.map(x => x.id), readAtById })) return;
+    legacy.forEach(x => { x.rd = true; saveMsg(x); });
+  }""",
+            """  function sendRead(email, list) {
+    const legacy = [], firebaseGroups = new Map();
+    list.forEach(x => {
+      if (!Number.isFinite(Number(x.seenAt)) || Number(x.seenAt) <= 0) x.seenAt = Date.now();
+      if (x.transport === 'firebase' && x.firebaseRoomId) {
+        const room = String(x.firebaseRoomId);
+        if (!firebaseGroups.has(room)) firebaseGroups.set(room, []);
+        firebaseGroups.get(room).push(x);
+      } else legacy.push(x);
+    });
+    if (window.RdChatFirebase && window.RdChatFirebase.markTextReadBatch) {
+      firebaseGroups.forEach((items, roomId) => {
+        window.RdChatFirebase.markTextReadBatch(roomId, items.map(x => x.id)).then(() => {
+          items.forEach(x => { x.rd = true; saveMsg(x); });
+        }).catch(error => console.warn('RdChat: recibo Firebase em lote pendente.', error));
+      });
+    } else if (window.RdChatFirebase && window.RdChatFirebase.markTextRead) {
+      firebaseGroups.forEach((items, roomId) => items.forEach(x => {
+        window.RdChatFirebase.markTextRead(roomId, x.id).then(() => { x.rd = true; saveMsg(x); }).catch(error => console.warn('RdChat: recibo Firebase pendente.', error));
+      }));
+    }
+    if (!legacy.length) return;
+    const readAtById = {};
+    legacy.forEach(x => { readAtById[x.id] = Number(x.seenAt); });
+    if (!sendTo(email, { t: 'read', ids: legacy.map(x => x.id), readAtById })) return;
+    legacy.forEach(x => { x.rd = true; saveMsg(x); });
+  }""",
+            "recibo de leitura enviado uma única vez por lote"
+        )
+
+
+        replaceExactlyOnce(
+            """  async function searchContactCode(query) {
+    const code = normalizeContactCode(query);
+    if (!isValidContactCode(code)) { toast('Digite o código completo no formato 123-456'); return; }
+    if (normalizeContactCode(me && me.code) === code) { toast('Esse é o seu próprio código'); return; }
+    if (contacts.some(c => normalizeContactCode(c.code) === code)) { toast('Esse contato já está na sua lista'); return; }
+    if (p2pPaused) { toast('A busca de contatos está indisponível no momento. Verifique sua conexão.'); return; }
+    if (!T || !lobbyRoom) {
+      toast('Buscando contato…');
+      await initP2P();
+      if (!T || !lobbyRoom) { toast('Não foi possível localizar o contato. Verifique a internet e tente novamente.'); return; }
+    }
+    toast('Procurando código de contato…');
+    const live = await lookupContactCode(code, 3500);
+    if (live) { showFoundByCode(live, code, true); return; }
+    toast('Código não localizado. Verifique se ele foi digitado corretamente.');
+  }""",
+            """  async function searchContactCode(query) {
+    const code = normalizeContactCode(query);
+    if (!isValidContactCode(code)) { toast('Digite o código completo no formato 123-456'); return; }
+    if (normalizeContactCode(me && me.code) === code) { toast('Esse é o seu próprio código'); return; }
+    if (contacts.some(c => normalizeContactCode(c.code) === code)) { toast('Esse contato já está na sua lista'); return; }
+    toast('Procurando código de contato…');
+    try {
+      if (window.RdChatFirebase && typeof window.RdChatFirebase.lookupContactByCode === 'function') {
+        const profile = await window.RdChatFirebase.lookupContactByCode(code);
+        if (profile && profile.email) {
+          showFoundByCode({ email: profile.email, name: profile.name, photo: profile.avatarData || '', firebaseUid: profile.uid }, code, false);
+          return;
+        }
+      }
+    } catch (error) {
+      if (!/não encontrado|não associado|404/i.test(String(error && error.message || error))) {
+        console.warn('RdChat: busca no diretório Firebase indisponível; tentando descoberta P2P.', error);
+      }
+    }
+    if (!T || !lobbyRoom) {
+      await initP2P();
+      if (!T || !lobbyRoom) { toast('Não foi possível localizar o contato. Verifique a internet e tente novamente.'); return; }
+    }
+    const live = await lookupContactCode(code, 3500);
+    if (live) { showFoundByCode(live, code, true); return; }
+    toast('Código não localizado. Verifique se ele foi digitado corretamente.');
+  }""",
+            "busca de códigos de contato no Firebase mesmo quando o usuário está offline"
+        )
+
+        replaceExactlyOnce(
+            """    const c = await addContact(foundData.email, foundData.name, { code: foundData.code || '' });""",
+            """    let linkedProfile = null;
+    try {
+      const linkResult = await window.RdChatFirebase.addContactByCode(foundData.code || '');
+      linkedProfile = linkResult && linkResult.contact;
+    } catch (error) {
+      toast(String(error && error.message || 'Não foi possível confirmar o contato nos dois aparelhos.'));
+      return;
+    }
+    if (!linkedProfile || !linkedProfile.uid || !linkedProfile.email) { toast('O servidor não confirmou o vínculo recíproco.'); return; }
+    const targetEmail = normEmail(linkedProfile.email);
+    const c = await addContact(targetEmail, linkedProfile.name || foundData.name, { code: linkedProfile.code || foundData.code || '', confirmed: true });
+    if (!c) { toast('Não foi possível adicionar este contato.'); return; }
+    c.firebaseUid = String(linkedProfile.uid);
+    c.confirmed = true;
+    c.reciprocalSynced = true;
+    c.code = linkedProfile.code || foundData.code || c.code;
+    c.avatarData = linkedProfile.avatarData || c.avatarData || '';
+    c.profileMediaVersion = linkedProfile.profileMediaVersion || c.profileMediaVersion || '';
+    c.profileMediaType = linkedProfile.profileMediaType || c.profileMediaType || '';
+    c.profileMediaName = linkedProfile.profileMediaName || c.profileMediaName || '';
+    await dbPut('contacts', { email: targetEmail }, c);
+    try { await window.RdChatFirebase.resolveContactUid(targetEmail); } catch (error) { console.warn('RdChat: o vínculo foi criado; sincronização dos listeners pendente.', error); }""",
+            "confirmação de vínculo recíproco antes de fechar o diálogo de contato"
+        )
+
+        val reciprocalRuntime = """
+<script id="rdchat-reciprocal-contact-sync-v1">
+(function(){
+  'use strict';
+  async function syncReciprocalContacts(){
+    var fb=window.RdChatFirebase;
+    if(!fb||typeof fb.syncContactsFromWorker!=='function') return 0;
+
+    // Migra contatos antigos que só estavam salvos no aparelho que fez a adição.
+    var legacy=contacts.filter(function(c){return c&&c.email&&c.code&&!c.reciprocalSynced;}).slice(0,100);
+    await Promise.allSettled(legacy.map(async function(c){
+      var result=await fb.addContactByCode(c.code);
+      var p=result&&result.contact;
+      if(!p||!p.uid)return;
+      c.firebaseUid=String(p.uid);c.confirmed=true;c.reciprocalSynced=true;
+      if(p.avatarData)c.avatarData=p.avatarData;
+      if(p.profileMediaVersion)c.profileMediaVersion=p.profileMediaVersion;
+      if(p.profileMediaType)c.profileMediaType=p.profileMediaType;
+      if(p.profileMediaName)c.profileMediaName=p.profileMediaName;
+      await dbPut('contacts',{email:c.email},c);
+    }));
+
+    var profiles=await fb.syncContactsFromWorker();
+    for(var i=0;i<profiles.length;i++){
+      var profile=profiles[i]||{};
+      var email=String(profile.email||'').trim().toLowerCase();
+      if(!email||!profile.uid||email===String(me&&me.email||'').trim().toLowerCase())continue;
+      var hidden=(prefs&&Array.isArray(prefs.hiddenContacts)?prefs.hiddenContacts:[]).map(function(v){return String(v||'').trim().toLowerCase();});
+      if(hidden.indexOf(email)>=0)continue;
+      var contact=contacts.find(function(item){return String(item.email||'').trim().toLowerCase()===email;});
+      if(!contact)contact=await addContact(email,profile.name||'Contato',{code:profile.code||'',confirmed:true});
+      if(!contact)continue;
+      contact.firebaseUid=String(profile.uid);contact.confirmed=true;contact.reciprocalSynced=true;
+      if(profile.code)contact.code=String(profile.code);
+      if(profile.name)contact.name=String(profile.name).slice(0,40);
+      if(profile.avatarData)contact.avatarData=String(profile.avatarData);
+      if(profile.profileMediaVersion)contact.profileMediaVersion=String(profile.profileMediaVersion);
+      if(profile.profileMediaType)contact.profileMediaType=String(profile.profileMediaType);
+      if(profile.profileMediaName)contact.profileMediaName=String(profile.profileMediaName);
+      await dbPut('contacts',{email:email},contact);
+      peerProfileByEmail.set(email,Object.assign({},peerProfileByEmail.get(email)||{},{
+        name:contact.name,avatarData:contact.avatarData||'',profileMediaVersion:contact.profileMediaVersion||'',
+        profileMediaType:contact.profileMediaType||'',profileMediaName:contact.profileMediaName||'',code:contact.code||'',uid:contact.firebaseUid
+      }));
+      try{await fb.resolveContactUid(email);}catch(error){console.warn('RdChat: listeners do contato serão sincronizados depois.',error);}
+    }
+    try{renderContacts();}catch(_){}
+    return profiles.length;
+  }
+  window.rdChatSyncReciprocalContacts=syncReciprocalContacts;
+  window.addEventListener('rdchat-firebase-ready',function(){syncReciprocalContacts().catch(function(error){console.warn('RdChat: sincronização de contatos recíprocos pendente.',error);});});
+  window.addEventListener('rdchat:fcm',function(event){
+    var payload=event&&event.detail||{};
+    if(payload.type==='rdchat_contact_added_v1'){
+      syncReciprocalContacts().then(function(){try{toast((payload.senderName||'Um contato')+' adicionou você aos contatos.');}catch(_){}}).catch(function(error){console.warn('RdChat: atualização de contato recebida por FCM pendente.',error);});
+    }
+  });
+})();
+</script>
+""".trimIndent()
+        replaceExactlyOnce("</body>", "$reciprocalRuntime\\n</body>", "sincronização e migração de contatos recíprocos")
+        htmlFile.writeText(html, Charsets.UTF_8)
+    }
+}
+
+android {
+    namespace = "com.example.rdchat"
+    compileSdk = 37
+    buildToolsVersion = "37.0.0"
+
+    sourceSets.getByName("main").assets.setSrcDirs(listOf(generatedRdchatAssets))
+
+    defaultConfig {
+        applicationId = "com.example.rdchat"
+        minSdk = 24
+        targetSdk = 37
+        versionCode = 1
+        versionName = "1.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField("int", "TELEGRAM_API_ID", telegramApiId.toString())
+        buildConfigField("String", "TELEGRAM_API_HASH", "\"$escapedTelegramApiHash\"")
+    }
+
+    buildFeatures {
+        buildConfig = true
+    }
+
+    // Mantém o APK universal menor ao comprimir as bibliotecas .so.
+    // O Android as extrai na instalação, preservando o carregamento nativo.
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+
+    // AGP 9.x compila Kotlin com o suporte Kotlin integrado; não aplicar kotlin-android.
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    // Gera um único APK com todas as bibliotecas nativas entregues pelas dependências.
+    // A verificação no CI exige as quatro ABIs Android: ARM 32/64 e x86 32/64.
+
+    buildTypes {
+        debug { isMinifyEnabled = false }
+        release { isMinifyEnabled = false }
+    }
+
+    testOptions { animationsDisabled = true }
+}
+
+tasks.named("preBuild").configure {
+    dependsOn(prepareRdchatAssets)
+}
+
+dependencies {
+    implementation(libs.androidx.activity.ktx)
+    implementation(libs.androidx.appcompat)
+    implementation(libs.androidx.constraintlayout)
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.material)
+    implementation(libs.androidx.webkit)
+    implementation(libs.androidx.biometric)
+
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.messaging)
+
+    // TDLib JNI + Java API, pinned to an immutable commit; includes arm64-v8a and x86_64.
+    implementation("com.github.capullo-tech:lib-tdlib-android:7dede3f1a716b7398caf79acd413ad9d5331f079")
+
+    // Native WebRTC media engine used together with TDLib call signaling.
+    implementation("io.github.pytgcalls:ntgcalls:3.0.5")
+
+    testImplementation(libs.junit)
+    androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.androidx.espresso.core)
+}
+}{c.name} adicionado aos contatos`);
   }""",
             """  async function confirmAddFound() {
     if (!foundData) return;
