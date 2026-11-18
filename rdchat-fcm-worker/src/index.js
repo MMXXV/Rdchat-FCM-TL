@@ -675,6 +675,30 @@ async function handleProfileUpload(request, env) {
       profileWrites.push({ path: '/telegramProfiles/' + encodeURIComponent(uid), data: nextProfileRecord });
     }
     await commitFirestoreDocuments(env, profileWrites);
+
+    // Propaga thumbnail e versão da mídia para os cartões de contato que já existem.
+    // Sem isso, contatos adicionados antes da troca do avatar mantinham a foto antiga.
+    const contactCollection = await loadDocumentOrNull(env, '/users/' + encodeURIComponent(uid) + '/contacts?pageSize=100');
+    const contactDocuments = (contactCollection && contactCollection.documents || []).slice(0, 100);
+    if (contactDocuments.length) {
+      const profileCardFields = {
+        avatarData,
+        profileMediaVersion: version,
+        profileMediaType: mediaType,
+        profileMediaName: mediaName,
+        updatedAt: new Date()
+      };
+      await commitFirestoreDocuments(env, contactDocuments.map(contactDocument => {
+        const contactFields = contactDocument.fields || {};
+        const contactUid = fieldString(contactFields, 'uid') || String(contactDocument.name || '').split('/').pop();
+        if (!validDocId(contactUid)) return null;
+        return {
+          path: '/users/' + encodeURIComponent(contactUid) + '/contacts/' + encodeURIComponent(uid),
+          data: profileCardFields
+        };
+      }).filter(Boolean));
+    }
+
     if (!nextProfileRecord) {
       try {
         await firestoreRequest(env, '/telegramProfiles/' + encodeURIComponent(uid), { method: 'DELETE' });
