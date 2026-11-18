@@ -870,6 +870,7 @@ android {
 
         buildConfigField("int", "TELEGRAM_API_ID", telegramApiId.toString())
         buildConfigField("String", "TELEGRAM_API_HASH", "\"$escapedTelegramApiHash\"")
+        buildConfigField("String", "TELEGRAM_APPLICATION_VERSION", "\"1.0.7\"")
     }
 
     buildFeatures {

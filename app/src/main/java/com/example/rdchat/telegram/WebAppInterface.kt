@@ -109,7 +109,7 @@ class WebAppInterface(
     fun tdlibEnviarSenha(password: String) = enqueueTdlib { tg.enviarSenha(password) }
 
     @JavascriptInterface
-    fun tdlibDefinirCodigo(code6: String) = tg.definirCodigo(code6)
+    fun tdlibDefinirCodigo(code6: String) = enqueueTdlib { tg.definirCodigo(code6) }
 
     @JavascriptInterface
     fun tdlibIniciarSeLogado() = restaurarSeModoTelefone()
@@ -188,7 +188,7 @@ class WebAppInterface(
             onFile(requestId, null, "Identificador de arquivo Telegram inválido.")
             return
         }
-        tg.baixar(id, requestId)
+        enqueueTdlib { tg.baixar(id, requestId) }
     }
 
     @JavascriptInterface
@@ -216,7 +216,7 @@ class WebAppInterface(
     fun tdlibConfirmarRecebimento(chatId: String, messageId: String) {
         val chat = chatId.toLongOrNull()
         val message = messageId.toLongOrNull()
-        if (chat != null && message != null) tg.confirmarRecebimento(chat, message)
+        if (chat != null && message != null) enqueueTdlib { tg.confirmarRecebimento(chat, message) }
     }
 
     override fun onAuthState(state: String) =

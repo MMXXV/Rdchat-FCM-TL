@@ -9,6 +9,7 @@ import android.util.Log
 import com.example.rdchat.BuildConfig
 import org.drinkless.tdlib.Client
 import org.drinkless.tdlib.TdApi
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.security.KeyStore
@@ -78,6 +79,9 @@ class TelegramManager(
     private val fileMimeTypes = ConcurrentHashMap<Int, String>()
     @Volatile private var pendingTelegramFcmToken: String? = null
     private val loginFinalized = AtomicBoolean(false)
+    private val pendingPushLock = Any()
+    private val pendingPushInFlight = ConcurrentHashMap.newKeySet<String>()
+    private val knownRdChatLock = Any()
     @Volatile private var callEngine: TelegramCallEngine? = null
 
     private val updates = Client.ResultHandler { obj ->
@@ -178,8 +182,17 @@ class TelegramManager(
             is TdApi.AuthorizationStateWaitTdlibParameters -> {
                 try {
                     val parameters = TdApi.SetTdlibParameters()
-                    parameters.databaseDirectory = File(ctx.filesDir, "tdlib").absolutePath
-                    parameters.filesDirectory = File(ctx.filesDir, "tdlib_files").absolutePath
+                    val databaseDirectory = File(ctx.filesDir, "tdlib")
+                    val filesDirectory = File(ctx.filesDir, "tdlib_files")
+                    if ((!databaseDirectory.isDirectory && !databaseDirectory.mkdirs()) || !databaseDirectory.canWrite()) {
+                        throw IllegalStateException("Não foi possível preparar o diretório do banco Telegram.")
+                    }
+                    if ((!filesDirectory.isDirectory && !filesDirectory.mkdirs()) || !filesDirectory.canWrite()) {
+                        throw IllegalStateException("Não foi possível preparar o diretório de arquivos Telegram.")
+                    }
+                    parameters.useTestDc = false
+                    parameters.databaseDirectory = databaseDirectory.absolutePath
+                    parameters.filesDirectory = filesDirectory.absolutePath
                     parameters.useFileDatabase = true
                     parameters.useChatInfoDatabase = true
                     parameters.useMessageDatabase = true
@@ -189,7 +202,7 @@ class TelegramManager(
                     parameters.systemLanguageCode = "pt-BR"
                     parameters.deviceModel = android.os.Build.MODEL
                     parameters.systemVersion = android.os.Build.VERSION.RELEASE
-                    parameters.applicationVersion = "1.0.7"
+                    parameters.applicationVersion = BuildConfig.TELEGRAM_APPLICATION_VERSION
                     parameters.databaseEncryptionKey = loadOrCreateDatabaseKey()
                     send(parameters) { result ->
                         if (result is TdApi.Error) cb.onError("Falha ao configurar o banco Telegram: " + result.message)
@@ -346,6 +359,8 @@ class TelegramManager(
                         if (me is TdApi.User) {
                             // Só informa privacidade confirmada quando as duas regras foram aceitas.
                             cb.onReady(me.id, username, phoneHidden.get() && phoneDiscoveryBlocked.get())
+                            drainPendingPushNotifications()
+                            syncKnownRdChatHistory()
                         } else if (me is TdApi.Error) {
                             cb.onError(me.message)
                         }
@@ -451,16 +466,13 @@ class TelegramManager(
         }
     }
 
-    /** Entrega ao TDLib o payload Telegram recebido pelo FirebaseMessagingService. */
+    /** Persiste o push e o entrega ao TDLib assim que a sessão estiver autenticada. */
     fun processarPushNotification(payload: String) {
         val value = payload.trim()
         if (value.isBlank()) return
+        persistPendingTelegramPush(value)
         if (client == null && !start()) return
-        send(TdApi.ProcessPushNotification(value)) { result ->
-            if (result is TdApi.Error) {
-                Log.w(TAG, "TDLib não conseguiu processar o push Telegram (${result.code}): ${result.message}")
-            }
-        }
+        if (ready) drainPendingPushNotifications()
     }
 
     private fun audioDurationSeconds(file: File): Int {
@@ -571,9 +583,130 @@ class TelegramManager(
         send(TdApi.SearchPublicChat(username)) { chat ->
             if (chat is TdApi.Chat) {
                 chatCache[username] = chat.id
+                rememberRdChatId(chat.id)
                 callback(chat.id)
             } else {
                 callback(null)
+            }
+        }
+    }
+
+    /**
+     * Guarda apenas chats que já transportaram mensagens RdChat. Isso permite recuperar
+     * o histórico útil sem varrer nem importar conversas pessoais do Telegram.
+     */
+    private fun rememberRdChatId(chatId: Long) {
+        if (chatId == 0L) return
+        synchronized(knownRdChatLock) {
+            val prefs = ctx.getSharedPreferences("rdchat_tdlib_sync", Context.MODE_PRIVATE)
+            val ids = LinkedHashSet(prefs.getStringSet("known_rdchat_chat_ids", emptySet()).orEmpty())
+            ids.add(chatId.toString())
+            while (ids.size > 200) {
+                val iterator = ids.iterator()
+                if (iterator.hasNext()) { iterator.next(); iterator.remove() } else break
+            }
+            prefs.edit().putStringSet("known_rdchat_chat_ids", HashSet(ids)).commit()
+        }
+    }
+
+    private fun knownRdChatIds(): List<Long> = synchronized(knownRdChatLock) {
+        val prefs = ctx.getSharedPreferences("rdchat_tdlib_sync", Context.MODE_PRIVATE)
+        prefs.getStringSet("known_rdchat_chat_ids", emptySet()).orEmpty()
+            .mapNotNull { it.toLongOrNull() }
+            .distinct()
+            .take(200)
+    }
+
+    private fun isRdChatEnvelope(message: TdApi.Message): Boolean {
+        if (message.isOutgoing) return false
+        val text = when (val content = message.content) {
+            is TdApi.MessageText -> content.text.text
+            is TdApi.MessageDocument -> content.caption.text
+            is TdApi.MessagePhoto -> content.caption.text
+            is TdApi.MessageVideo -> content.caption.text
+            is TdApi.MessageAudio -> content.caption.text
+            is TdApi.MessageVoiceNote -> content.caption.text
+            is TdApi.MessageAnimation -> content.caption.text
+            else -> ""
+        }
+        return text.startsWith("RDC1")
+    }
+
+    /**
+     * Recarrega a lista principal e busca até 100 mensagens recentes por chat RdChat já
+     * conhecido. As mensagens pessoais do Telegram são filtradas antes de chegar ao WebView.
+     */
+    private fun syncKnownRdChatHistory() {
+        if (!ready) return
+        val ids = knownRdChatIds()
+        if (ids.isEmpty()) return
+        send(TdApi.LoadChats(null, 100)) {
+            send(TdApi.GetChats(null, 100)) { result ->
+                val listed = (result as? TdApi.Chats)?.chatIds?.toSet().orEmpty()
+                val ordered = ids.filter { it in listed } + ids.filterNot { it in listed }
+                Log.i(TAG, "Sincronização de histórico RdChat: ${ordered.size} conversa(s) conhecida(s).")
+                syncKnownRdChatHistory(ordered, 0)
+            }
+        }
+    }
+
+    private fun syncKnownRdChatHistory(chatIds: List<Long>, index: Int) {
+        if (!ready || index >= chatIds.size) return
+        val chatId = chatIds[index]
+        send(TdApi.GetChatHistory(chatId, 0, 0, 100, false)) { result ->
+            val history = result as? TdApi.Messages
+            history?.messages
+                ?.asSequence()
+                ?.filter(::isRdChatEnvelope)
+                ?.sortedBy { it.date }
+                ?.forEach(::onNewMessage)
+            if (result is TdApi.Error) Log.w(TAG, "Histórico RdChat indisponível para chat $chatId: ${result.message}")
+            syncKnownRdChatHistory(chatIds, index + 1)
+        }
+    }
+
+    private fun readPendingTelegramPushesLocked(): MutableList<String> {
+        val prefs = ctx.getSharedPreferences("rdchat_tdlib_push", Context.MODE_PRIVATE)
+        val array = try { JSONArray(prefs.getString("pending_payloads", "[]") ?: "[]") } catch (_: Exception) { JSONArray() }
+        return (0 until array.length()).mapNotNull { index ->
+            array.optString(index).takeIf { it.isNotBlank() }
+        }.toMutableList()
+    }
+
+    private fun persistPendingTelegramPush(payload: String) {
+        synchronized(pendingPushLock) {
+            val values = readPendingTelegramPushesLocked()
+            if (payload !in values) values.add(payload)
+            while (values.size > 100) values.removeAt(0)
+            val array = JSONArray().apply { values.forEach { put(it) } }
+            val saved = ctx.getSharedPreferences("rdchat_tdlib_push", Context.MODE_PRIVATE)
+                .edit().putString("pending_payloads", array.toString()).commit()
+            if (!saved) Log.w(TAG, "Não foi possível persistir a fila de push Telegram.")
+        }
+    }
+
+    private fun removePendingTelegramPush(payload: String) {
+        synchronized(pendingPushLock) {
+            val values = readPendingTelegramPushesLocked()
+            values.removeAll { it == payload }
+            val array = JSONArray().apply { values.forEach { put(it) } }
+            ctx.getSharedPreferences("rdchat_tdlib_push", Context.MODE_PRIVATE)
+                .edit().putString("pending_payloads", array.toString()).commit()
+        }
+    }
+
+    private fun drainPendingPushNotifications() {
+        if (!ready) return
+        val pending = synchronized(pendingPushLock) { readPendingTelegramPushesLocked().toList() }
+        pending.forEach { payload ->
+            if (!pendingPushInFlight.add(payload)) return@forEach
+            send(TdApi.ProcessPushNotification(payload)) { result ->
+                pendingPushInFlight.remove(payload)
+                if (result is TdApi.Error) {
+                    Log.w(TAG, "TDLib não conseguiu processar o push Telegram (${result.code}): ${result.message}")
+                } else {
+                    removePendingTelegramPush(payload)
+                }
             }
         }
     }
@@ -640,6 +773,7 @@ class TelegramManager(
                 .put("mime", mime)
                 .put("size", size)
         }
+        if (payload.optString("text").startsWith("RDC1")) rememberRdChatId(message.chatId)
         cb.onMessage(payload.toString())
     }
 
@@ -672,6 +806,6 @@ class TelegramManager(
     /** Called only after HTML accepts and persists a valid RDC1 envelope. */
     fun confirmarRecebimento(chatId: Long, messageId: Long) {
         if (!ready) return
-        send(TdApi.DeleteMessages(chatId, longArrayOf(messageId), true))
+        send(TdApi.ViewMessages(chatId, longArrayOf(messageId), null, true))
     }
 }
