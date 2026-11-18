@@ -58,8 +58,8 @@ jobs:
 
           html = replace_once(
               html,
-              "const sent = await operation;\\n      if (!sent) return;",
-              "const sent = await operation;\\n      if (!sent) {\\n        if (!input.value.trim()) input.value = text;\\n        toggleSendButton();\\n        resizeMsgInput();\\n        return;\\n      }",
+              "const sent = await operation;\n      if (!sent) return;",
+              "const sent = await operation;\n      if (!sent) {\n        if (!input.value.trim()) input.value = text;\n        toggleSendButton();\n        resizeMsgInput();\n        return;\n      }",
               "preservação do texto quando postBubble retorna null"
           )
           html = replace_once(
@@ -71,7 +71,7 @@ jobs:
           html = replace_once(
               html,
               "if (incomingFirebaseTextIds.has(String(remote.id)) || msgStore.has(String(remote.id))) return;",
-              "if (incomingFirebaseTextIds.has(String(remote.id)) || msgStore.has(String(remote.id))) return;\\n    const persistedDuplicate = await dbGet('msgs', String(remote.id)).catch(() => null);\\n    if (persistedDuplicate) { incomingFirebaseTextIds.add(String(remote.id)); return; }",
+              "if (incomingFirebaseTextIds.has(String(remote.id)) || msgStore.has(String(remote.id))) return;\n    const persistedDuplicate = await dbGet('msgs', String(remote.id)).catch(() => null);\n    if (persistedDuplicate) { incomingFirebaseTextIds.add(String(remote.id)); return; }",
               "deduplicação de mensagens recuperadas do histórico"
           )
           required = ["rdchat-v106-js", "rdchat-family-safety-runtime-v3-local-dob", "rd-login-field-icon", "window.RdChatTdlib"]
@@ -82,7 +82,7 @@ jobs:
 
           gradle = gradle_path.read_text(encoding="utf-8")
           start_marker = "val generatedRdchatAssets ="
-          end_marker = "\\nandroid {"
+          end_marker = "\nandroid {"
           if gradle.count(start_marker) != 1 or gradle.count(end_marker) != 1:
               raise SystemExit("Bloco de geração Gradle não pôde ser identificado unicamente.")
           start = gradle.index(start_marker)
@@ -90,7 +90,7 @@ jobs:
           gradle = gradle[:start] + gradle[end + 1:]
           gradle = replace_once(
               gradle,
-              '    sourceSets.getByName("main").assets.setSrcDirs(listOf(generatedRdchatAssets))\\n',
+              '    sourceSets.getByName("main").assets.setSrcDirs(listOf(generatedRdchatAssets))\n',
               "",
               "origem de assets Android"
           )
