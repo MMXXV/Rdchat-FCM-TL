@@ -882,6 +882,142 @@ val prepareRdchatAssets = tasks.register("prepareRdchatAssets") {
             "recibo de leitura enviado uma única vez por lote"
         )
 
+
+        replaceExactlyOnce(
+            """  async function searchContactCode(query) {
+    const code = normalizeContactCode(query);
+    if (!isValidContactCode(code)) { toast('Digite o código completo no formato 123-456'); return; }
+    if (normalizeContactCode(me && me.code) === code) { toast('Esse é o seu próprio código'); return; }
+    if (contacts.some(c => normalizeContactCode(c.code) === code)) { toast('Esse contato já está na sua lista'); return; }
+    if (p2pPaused) { toast('A busca de contatos está indisponível no momento. Verifique sua conexão.'); return; }
+    if (!T || !lobbyRoom) {
+      toast('Buscando contato…');
+      await initP2P();
+      if (!T || !lobbyRoom) { toast('Não foi possível localizar o contato. Verifique a internet e tente novamente.'); return; }
+    }
+    toast('Procurando código de contato…');
+    const live = await lookupContactCode(code, 3500);
+    if (live) { showFoundByCode(live, code, true); return; }
+    toast('Código não localizado. Verifique se ele foi digitado corretamente.');
+  }""",
+            """  async function searchContactCode(query) {
+    const code = normalizeContactCode(query);
+    if (!isValidContactCode(code)) { toast('Digite o código completo no formato 123-456'); return; }
+    if (normalizeContactCode(me && me.code) === code) { toast('Esse é o seu próprio código'); return; }
+    if (contacts.some(c => normalizeContactCode(c.code) === code)) { toast('Esse contato já está na sua lista'); return; }
+    toast('Procurando código de contato…');
+    try {
+      if (window.RdChatFirebase && typeof window.RdChatFirebase.lookupContactByCode === 'function') {
+        const profile = await window.RdChatFirebase.lookupContactByCode(code);
+        if (profile && profile.email) {
+          showFoundByCode({ email: profile.email, name: profile.name, photo: profile.avatarData || '', firebaseUid: profile.uid }, code, false);
+          return;
+        }
+      }
+    } catch (error) {
+      if (!/não encontrado|não associado|404/i.test(String(error && error.message || error))) {
+        console.warn('RdChat: busca no diretório Firebase indisponível; tentando descoberta P2P.', error);
+      }
+    }
+    if (!T || !lobbyRoom) {
+      await initP2P();
+      if (!T || !lobbyRoom) { toast('Não foi possível localizar o contato. Verifique a internet e tente novamente.'); return; }
+    }
+    const live = await lookupContactCode(code, 3500);
+    if (live) { showFoundByCode(live, code, true); return; }
+    toast('Código não localizado. Verifique se ele foi digitado corretamente.');
+  }""",
+            "busca de códigos de contato no Firebase mesmo quando o usuário está offline"
+        )
+
+        replaceExactlyOnce(
+            """    const c = await addContact(foundData.email, foundData.name, { code: foundData.code || '' });""",
+            """    let linkedProfile = null;
+    try {
+      const linkResult = await window.RdChatFirebase.addContactByCode(foundData.code || '');
+      linkedProfile = linkResult && linkResult.contact;
+    } catch (error) {
+      toast(String(error && error.message || 'Não foi possível confirmar o contato nos dois aparelhos.'));
+      return;
+    }
+    if (!linkedProfile || !linkedProfile.uid || !linkedProfile.email) { toast('O servidor não confirmou o vínculo recíproco.'); return; }
+    const targetEmail = normEmail(linkedProfile.email);
+    const c = await addContact(targetEmail, linkedProfile.name || foundData.name, { code: linkedProfile.code || foundData.code || '', confirmed: true });
+    if (!c) { toast('Não foi possível adicionar este contato.'); return; }
+    c.firebaseUid = String(linkedProfile.uid);
+    c.confirmed = true;
+    c.reciprocalSynced = true;
+    c.code = linkedProfile.code || foundData.code || c.code;
+    c.avatarData = linkedProfile.avatarData || c.avatarData || '';
+    c.profileMediaVersion = linkedProfile.profileMediaVersion || c.profileMediaVersion || '';
+    c.profileMediaType = linkedProfile.profileMediaType || c.profileMediaType || '';
+    c.profileMediaName = linkedProfile.profileMediaName || c.profileMediaName || '';
+    await dbPut('contacts', { email: targetEmail }, c);
+    try { await window.RdChatFirebase.resolveContactUid(targetEmail); } catch (error) { console.warn('RdChat: o vínculo foi criado; sincronização dos listeners pendente.', error); }""",
+            "confirmação de vínculo recíproco antes de fechar o diálogo de contato"
+        )
+
+        val reciprocalRuntime = """
+<script id="rdchat-reciprocal-contact-sync-v1">
+(function(){
+  'use strict';
+  async function syncReciprocalContacts(){
+    var fb=window.RdChatFirebase;
+    if(!fb||typeof fb.syncContactsFromWorker!=='function') return 0;
+
+    // Migra contatos antigos que só estavam salvos no aparelho que fez a adição.
+    var legacy=contacts.filter(function(c){return c&&c.email&&c.code&&!c.reciprocalSynced;}).slice(0,100);
+    await Promise.allSettled(legacy.map(async function(c){
+      var result=await fb.addContactByCode(c.code);
+      var p=result&&result.contact;
+      if(!p||!p.uid)return;
+      c.firebaseUid=String(p.uid);c.confirmed=true;c.reciprocalSynced=true;
+      if(p.avatarData)c.avatarData=p.avatarData;
+      if(p.profileMediaVersion)c.profileMediaVersion=p.profileMediaVersion;
+      if(p.profileMediaType)c.profileMediaType=p.profileMediaType;
+      if(p.profileMediaName)c.profileMediaName=p.profileMediaName;
+      await dbPut('contacts',{email:c.email},c);
+    }));
+
+    var profiles=await fb.syncContactsFromWorker();
+    for(var i=0;i<profiles.length;i++){
+      var profile=profiles[i]||{};
+      var email=String(profile.email||'').trim().toLowerCase();
+      if(!email||!profile.uid||email===String(me&&me.email||'').trim().toLowerCase())continue;
+      var hidden=(prefs&&Array.isArray(prefs.hiddenContacts)?prefs.hiddenContacts:[]).map(function(v){return String(v||'').trim().toLowerCase();});
+      if(hidden.indexOf(email)>=0)continue;
+      var contact=contacts.find(function(item){return String(item.email||'').trim().toLowerCase()===email;});
+      if(!contact)contact=await addContact(email,profile.name||'Contato',{code:profile.code||'',confirmed:true});
+      if(!contact)continue;
+      contact.firebaseUid=String(profile.uid);contact.confirmed=true;contact.reciprocalSynced=true;
+      if(profile.code)contact.code=String(profile.code);
+      if(profile.name)contact.name=String(profile.name).slice(0,40);
+      if(profile.avatarData)contact.avatarData=String(profile.avatarData);
+      if(profile.profileMediaVersion)contact.profileMediaVersion=String(profile.profileMediaVersion);
+      if(profile.profileMediaType)contact.profileMediaType=String(profile.profileMediaType);
+      if(profile.profileMediaName)contact.profileMediaName=String(profile.profileMediaName);
+      await dbPut('contacts',{email:email},contact);
+      peerProfileByEmail.set(email,Object.assign({},peerProfileByEmail.get(email)||{},{
+        name:contact.name,avatarData:contact.avatarData||'',profileMediaVersion:contact.profileMediaVersion||'',
+        profileMediaType:contact.profileMediaType||'',profileMediaName:contact.profileMediaName||'',code:contact.code||'',uid:contact.firebaseUid
+      }));
+      try{await fb.resolveContactUid(email);}catch(error){console.warn('RdChat: listeners do contato serão sincronizados depois.',error);}
+    }
+    try{renderContacts();}catch(_){}
+    return profiles.length;
+  }
+  window.rdChatSyncReciprocalContacts=syncReciprocalContacts;
+  window.addEventListener('rdchat-firebase-ready',function(){syncReciprocalContacts().catch(function(error){console.warn('RdChat: sincronização de contatos recíprocos pendente.',error);});});
+  window.addEventListener('rdchat:fcm',function(event){
+    var payload=event&&event.detail||{};
+    if(payload.type==='rdchat_contact_added_v1'){
+      syncReciprocalContacts().then(function(){try{toast((payload.senderName||'Um contato')+' adicionou você aos contatos.');}catch(_){}}).catch(function(error){console.warn('RdChat: atualização de contato recebida por FCM pendente.',error);});
+    }
+  });
+})();
+</script>
+""".trimIndent()
+        replaceExactlyOnce("</body>", "$reciprocalRuntime\\n</body>", "sincronização e migração de contatos recíprocos")
         htmlFile.writeText(html, Charsets.UTF_8)
     }
 }
