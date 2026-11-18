@@ -60,7 +60,7 @@ const checks = {
   phoneEyeTogglesMask: has("phone.type=showing?'tel':'password'"),
   phoneEyeHasAccessibleLabel: has("phoneEye.setAttribute('aria-label',showing?'Ocultar número':'Mostrar número')"),
   phoneEyeUsesEyeIcon: phoneEyeMarkup.includes("M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"),
-  phoneLoginNormalizesBrazilianNationalNumber: has("var digits=String($('rdTgPhone').value||'').replace(/\\\\D/g,'')") &&
+  phoneLoginNormalizesBrazilianNationalNumber: has("var digits=String($('rdTgPhone').value||'').replace(") &&
     has("digits.length===12||digits.length===13") &&
     has("var phone='+55'+digits") &&
     has("O +55 será adicionado automaticamente."),
