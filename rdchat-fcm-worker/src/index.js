@@ -376,11 +376,12 @@ async function handlePush(request, env) {
   const recipients = fieldArrayStrings(fields, 'toUids').filter(uid => uid !== senderUid);
   if (!recipients.length) return { ok: true, sent: 0, reason: 'no_recipients' };
 
-  const senderName = fieldString(fields, 'fromName').slice(0, 60) || 'Novo contato';
+  const senderProfile = await loadUserProfile(env, senderUid);
+  const senderName = (fieldString(fields, 'fromName') || senderProfile.name || 'Novo contato').slice(0, 60);
   const text = fieldString(fields, 'text').replace(/\s+/g, ' ').trim();
   const preview = (text || 'Você recebeu uma mensagem.').slice(0, 120);
-  const senderEmail = safeDirectoryEmail(fieldString(fields, 'fromEmail'));
-  const senderCode = fieldString(fields, 'fromCode').replace(/\\D/g, '').slice(0, 6);
+  const senderEmail = safeDirectoryEmail(fieldString(fields, 'fromEmail')) || safeDirectoryEmail(senderProfile.email);
+  const senderCode = (fieldString(fields, 'fromCode') || senderProfile.code || '').replace(/\\D/g, '').slice(0, 6);
   const deliveries = await Promise.all(recipients.map(async recipientUid => {
     const tokens = await loadUserTokens(env, recipientUid);
     const results = await Promise.allSettled(tokens.map(token => sendFcm(env, token, {
