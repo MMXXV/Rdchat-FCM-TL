@@ -497,9 +497,8 @@ val prepareRdchatAssets = tasks.register("prepareRdchatAssets") {
             """      if (native && typeof native.requestNotificationPermission === 'function') await native.requestNotificationPermission();
       const plugins = window.Capacitor && window.Capacitor.Plugins;""",
             """      if (native && typeof native.requestNotificationPermission === 'function') await native.requestNotificationPermission();
-      if (native && typeof native.requestAppPermissions === 'function') native.requestAppPermissions();
       const plugins = window.Capacitor && window.Capacitor.Plugins;""",
-            "solicitação nativa das permissões na inicialização"
+            "solicitação apenas de notificações na inicialização"
         )
 
         replaceExactlyOnce(
