@@ -318,7 +318,32 @@ async function handleContactAdd(request, env) {
     { path: '/users/' + encodeURIComponent(requesterUid) + '/contacts/' + encodeURIComponent(targetUid), data: contactRecord(target) },
     { path: '/users/' + encodeURIComponent(targetUid) + '/contacts/' + encodeURIComponent(requesterUid), data: contactRecord(requester) }
   ]);
-  return { ok: true, reciprocal: true, contact: target };
+
+  // A pessoa que recebeu o vínculo é avisada em segundo plano para sincronizar a lista,
+  // mesmo quando o app do outro lado já está aberto ou foi suspenso.
+  const targetTokens = await loadUserTokens(env, targetUid);
+  const pushResults = await Promise.allSettled(targetTokens.map(token => sendFcm(env, token, {
+    type: 'rdchat_contact_added_v1',
+    queueId: `contact:${requesterUid}:${targetUid}`.slice(0, 160),
+    senderId: requesterUid,
+    senderEmail: requester.email,
+    senderName: requester.name,
+    senderCode: requester.code,
+    title: 'RdChat · Novo contato',
+    body: requester.name + ' adicionou você aos contatos.'
+  })));
+  return { ok: true, reciprocal: true, contact: target,
+    notified: pushResults.filter(result => result.status === 'fulfilled').length };
+}
+
+async function handleContactsList(request, env) {
+  const bearer = (request.headers.get('Authorization') || '').match(/^Bearer\\s+(.+)$/i);
+  const uid = await verifyFirebaseUser(bearer && bearer[1], env);
+  const collection = await loadDocumentOrNull(env, '/users/' + encodeURIComponent(uid) + '/contacts?pageSize=100');
+  const contacts = (collection && collection.documents || []).map(document =>
+    publicProfileFromFields(document.fields || {}, fieldString(document.fields || {}, 'uid') || document.name.split('/').pop())
+  ).filter(profile => profile.uid && profile.email);
+  return { ok: true, contacts };
 }
 
 async function handleProfileInfo(request, env, profileUid) {
@@ -1009,6 +1034,10 @@ export default {
       return responseJson({ ok: true, service: 'RdChat FCM + Telegram Media Gateway', project: env.FIREBASE_PROJECT_ID, mediaConfigured: !!(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHANNEL_ID), version: 2 }, 200, origin);
     }
     try {
+      if (request.method === 'GET' && url.pathname === '/v1/contacts') {
+        const result = await handleContactsList(request, env);
+        return responseJson(result, 200, origin);
+      }
       if (request.method === 'POST' && url.pathname === '/v1/identity/register') {
         const result = await handleIdentityRegister(request, env);
         return responseJson(result, 200, origin);
