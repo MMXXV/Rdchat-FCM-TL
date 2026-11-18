@@ -199,6 +199,141 @@ async function sendFcm(env, token, data) {
   return body;
 }
 
+function safeDirectoryEmail(value) {
+  const email = String(value || '').trim().toLowerCase();
+  return email.length <= 180 && /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) ? email : '';
+}
+
+function publicProfileFromFields(fields, uid) {
+  return {
+    uid,
+    email: fieldString(fields, 'email'),
+    name: fieldString(fields, 'displayName') || fieldString(fields, 'name') || 'Contato',
+    code: fieldString(fields, 'code'),
+    accountType: fieldString(fields, 'accountType'),
+    tgUsername: fieldString(fields, 'tgUsername'),
+    is_adult: fields && fields.is_adult ? fields.is_adult.booleanValue === true : null,
+    avatarData: fieldString(fields, 'avatarData'),
+    avatarVersion: fieldString(fields, 'profileMediaVersion'),
+    profileMediaVersion: fieldString(fields, 'profileMediaVersion'),
+    profileMediaType: fieldString(fields, 'profileMediaType'),
+    profileMediaName: fieldString(fields, 'profileMediaName')
+  };
+}
+
+async function loadDocumentOrNull(env, path) {
+  try { return await firestoreRequest(env, path); }
+  catch (error) {
+    if (error instanceof HttpError && error.status === 404) return null;
+    throw error;
+  }
+}
+
+async function handleIdentityRegister(request, env) {
+  const bearer = (request.headers.get('Authorization') || '').match(/^Bearer\\s+(.+)$/i);
+  const uid = await verifyFirebaseUser(bearer && bearer[1], env);
+  const input = await request.json().catch(() => ({}));
+  const code = String(input.code || '').replace(/\\D/g, '');
+  const email = safeDirectoryEmail(input.email);
+  const name = String(input.name || input.displayName || 'Contato').trim().slice(0, 40) || 'Contato';
+  const accountType = input.accountType === 'COM_NUMERO' ? 'COM_NUMERO' : 'SEM_NUMERO';
+  if (!/^[0-9]{6}$/.test(code) || !email) throw new HttpError(400, 'Código de contato ou e-mail inválido.');
+
+  const existing = await loadDocumentOrNull(env, '/contactCodes/' + encodeURIComponent(code));
+  if (existing && fieldString(existing.fields, 'uid') !== uid) {
+    throw new HttpError(409, 'Este código já pertence a outra conta. Gere outro código de seis dígitos.');
+  }
+  const userFields = {
+    uid, email, displayName: name, name, code, accountType,
+    tgUserId: String(input.tgUserId || '').slice(0, 80),
+    tgUsername: String(input.tgUsername || '').slice(0, 64),
+    is_adult: typeof input.is_adult === 'boolean' ? input.is_adult : null,
+    updatedAt: new Date()
+  };
+  const codeFields = {
+    uid, email, name, code, accountType,
+    tgUsername: userFields.tgUsername,
+    is_adult: userFields.is_adult,
+    updatedAt: userFields.updatedAt
+  };
+  await commitFirestoreDocuments(env, [
+    { path: '/users/' + encodeURIComponent(uid), data: userFields },
+    { path: '/contactCodes/' + encodeURIComponent(code), data: codeFields }
+  ]);
+  return { ok: true, uid, code, name, email };
+}
+
+async function handleContactLookup(request, env) {
+  const bearer = (request.headers.get('Authorization') || '').match(/^Bearer\\s+(.+)$/i);
+  const requesterUid = await verifyFirebaseUser(bearer && bearer[1], env);
+  const input = await request.json().catch(() => ({}));
+  const code = String(input.code || '').replace(/\\D/g, '');
+  if (!/^[0-9]{6}$/.test(code)) throw new HttpError(400, 'Digite os seis dígitos do código.');
+  const document = await loadDocumentOrNull(env, '/contactCodes/' + encodeURIComponent(code));
+  if (!document) throw new HttpError(404, 'Código não encontrado. Confira os seis dígitos.');
+  const profile = publicProfileFromFields(document.fields || {}, fieldString(document.fields || {}, 'uid'));
+  if (!profile.uid || !profile.email || profile.uid === requesterUid) throw new HttpError(404, 'Código não associado a outro usuário.');
+  return { ok: true, profile };
+}
+
+async function handleContactAdd(request, env) {
+  const bearer = (request.headers.get('Authorization') || '').match(/^Bearer\\s+(.+)$/i);
+  const requesterUid = await verifyFirebaseUser(bearer && bearer[1], env);
+  const input = await request.json().catch(() => ({}));
+  const code = String(input.code || '').replace(/\\D/g, '');
+  if (!/^[0-9]{6}$/.test(code)) throw new HttpError(400, 'Digite os seis dígitos do código.');
+
+  const codeDocument = await loadDocumentOrNull(env, '/contactCodes/' + encodeURIComponent(code));
+  if (!codeDocument) throw new HttpError(404, 'Código não encontrado. Confira os seis dígitos.');
+  const targetUid = fieldString(codeDocument.fields || {}, 'uid');
+  if (!targetUid || targetUid === requesterUid) throw new HttpError(400, 'Código inválido ou pertencente a esta conta.');
+
+  const [requesterDocument, targetDocument] = await Promise.all([
+    loadDocumentOrNull(env, '/users/' + encodeURIComponent(requesterUid)),
+    loadDocumentOrNull(env, '/users/' + encodeURIComponent(targetUid))
+  ]);
+  if (!requesterDocument || !targetDocument) throw new HttpError(409, 'Um dos perfis Firebase ainda não está completo.');
+
+  const requester = publicProfileFromFields(requesterDocument.fields || {}, requesterUid);
+  const target = publicProfileFromFields(targetDocument.fields || {}, targetUid);
+  if (!requester.email || !target.email || target.code !== code) throw new HttpError(409, 'Dados de identidade não correspondem ao código informado.');
+
+  const now = new Date();
+  const contactRecord = (profile) => ({
+    uid: profile.uid,
+    email: profile.email,
+    name: profile.name,
+    code: profile.code,
+    accountType: profile.accountType || 'SEM_NUMERO',
+    tgUsername: profile.tgUsername || '',
+    is_adult: typeof profile.is_adult === 'boolean' ? profile.is_adult : null,
+    avatarData: profile.avatarData || '',
+    profileMediaVersion: profile.profileMediaVersion || '',
+    profileMediaType: profile.profileMediaType || '',
+    profileMediaName: profile.profileMediaName || '',
+    addedAt: now,
+    confirmed: true
+  });
+  await commitFirestoreDocuments(env, [
+    { path: '/users/' + encodeURIComponent(requesterUid) + '/contacts/' + encodeURIComponent(targetUid), data: contactRecord(target) },
+    { path: '/users/' + encodeURIComponent(targetUid) + '/contacts/' + encodeURIComponent(requesterUid), data: contactRecord(requester) }
+  ]);
+  return { ok: true, reciprocal: true, contact: target };
+}
+
+async function handleProfileInfo(request, env, profileUid) {
+  const bearer = (request.headers.get('Authorization') || '').match(/^Bearer\\s+(.+)$/i);
+  const requesterUid = await verifyFirebaseUser(bearer && bearer[1], env);
+  if (!validDocId(profileUid)) throw new HttpError(400, 'UID de perfil inválido.');
+  if (requesterUid !== profileUid) {
+    const relation = await loadDocumentOrNull(env, '/users/' + encodeURIComponent(requesterUid) + '/contacts/' + encodeURIComponent(profileUid));
+    if (!relation) throw new HttpError(403, 'Somente contatos adicionados podem consultar este perfil.');
+  }
+  const document = await loadDocumentOrNull(env, '/users/' + encodeURIComponent(profileUid));
+  if (!document) throw new HttpError(404, 'Perfil não encontrado.');
+  return { ok: true, profile: publicProfileFromFields(document.fields || {}, profileUid) };
+}
+
 async function handlePush(request, env) {
   const bearer = (request.headers.get('Authorization') || '').match(/^Bearer\s+(.+)$/i);
   const senderUid = await verifyFirebaseUser(bearer && bearer[1], env);
@@ -219,30 +354,29 @@ async function handlePush(request, env) {
   const senderName = fieldString(fields, 'fromName').slice(0, 60) || 'Novo contato';
   const text = fieldString(fields, 'text').replace(/\s+/g, ' ').trim();
   const preview = (text || 'Você recebeu uma mensagem.').slice(0, 120);
-  let sent = 0;
-  const failures = [];
-  for (const recipientUid of recipients) {
+  const senderEmail = safeDirectoryEmail(fieldString(fields, 'fromEmail'));
+  const senderCode = fieldString(fields, 'fromCode').replace(/\\D/g, '').slice(0, 6);
+  const deliveries = await Promise.all(recipients.map(async recipientUid => {
     const tokens = await loadUserTokens(env, recipientUid);
-    for (const token of tokens) {
-      try {
-        await sendFcm(env, token, {
-          type: 'rdchat_wake_v1',
-          queueId: `wake:${messageId}:${recipientUid}`.slice(0, 160),
-          id: messageId,
-          roomId,
-          messageId,
-          recipientUid,
-          senderId: senderUid,
-          senderName,
-          title: `RdChat · ${senderName}`,
-          body: preview
-        });
-        sent++;
-      } catch (error) {
-        failures.push({ uid: recipientUid, code: String(error.message || error).slice(0, 180) });
-      }
-    }
-  }
+    const results = await Promise.allSettled(tokens.map(token => sendFcm(env, token, {
+      type: 'rdchat_wake_v1',
+      queueId: `wake:${messageId}:${recipientUid}`.slice(0, 160),
+      id: messageId,
+      roomId,
+      messageId,
+      recipientUid,
+      senderId: senderUid,
+      senderEmail,
+      senderCode,
+      senderName,
+      title: `RdChat · ${senderName}`,
+      body: preview
+    })));
+    return { uid: recipientUid, sent: results.filter(result => result.status === 'fulfilled').length,
+      failures: results.filter(result => result.status === 'rejected').map(result => ({ uid: recipientUid, code: String(result.reason && result.reason.message || result.reason).slice(0, 180) })) };
+  }));
+  const sent = deliveries.reduce((total, result) => total + result.sent, 0);
+  const failures = deliveries.flatMap(result => result.failures);
   return { ok: true, sent, recipients: recipients.length, failures };
 }
 
@@ -875,6 +1009,23 @@ export default {
       return responseJson({ ok: true, service: 'RdChat FCM + Telegram Media Gateway', project: env.FIREBASE_PROJECT_ID, mediaConfigured: !!(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHANNEL_ID), version: 2 }, 200, origin);
     }
     try {
+      if (request.method === 'POST' && url.pathname === '/v1/identity/register') {
+        const result = await handleIdentityRegister(request, env);
+        return responseJson(result, 200, origin);
+      }
+      if (request.method === 'POST' && url.pathname === '/v1/contacts/lookup') {
+        const result = await handleContactLookup(request, env);
+        return responseJson(result, 200, origin);
+      }
+      if (request.method === 'POST' && url.pathname === '/v1/contacts/add') {
+        const result = await handleContactAdd(request, env);
+        return responseJson(result, 200, origin);
+      }
+      if (request.method === 'GET' && url.pathname.startsWith('/v1/profile-info/')) {
+        const profileUid = decodeURIComponent(url.pathname.slice('/v1/profile-info/'.length));
+        const result = await handleProfileInfo(request, env, profileUid);
+        return responseJson(result, 200, origin);
+      }
       if (request.method === 'POST' && url.pathname === '/v1/profile') {
         const result = await handleProfileUpload(request, env);
         return responseJson(result, 200, origin);
