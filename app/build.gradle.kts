@@ -537,6 +537,120 @@ val prepareRdchatAssets = tasks.register("prepareRdchatAssets") {
             "sincronização por email quando UID ainda não foi resolvido"
         )
 
+
+        replaceExactlyOnce(
+            """  async function registerOwnIdentity() {
+    if (!currentUid || !me || !me.email) return;
+    let code = codeNorm(me.code);
+    if (!codePathSafe(code) && typeof createContactCode === 'function') code = codeNorm(createContactCode());
+    if (!codePathSafe(code)) throw new Error('Código de contato inválido.');
+    let reserved = false;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const ref = fs.collection('contactCodes').doc(code);
+      const available = await fs.runTransaction(async tx => {
+        const snap = await tx.get(ref);
+        if (snap.exists && snap.data().uid !== currentUid) return false;
+        tx.set(ref, { uid: currentUid, email: String(me.email), name: String(me.name || 'Contato').slice(0, 40), code, accountType: me.accountType === 'COM_NUMERO' ? 'COM_NUMERO' : 'SEM_NUMERO', tgUsername: String(me.tgUsername || ''), is_adult: (typeof me.is_adult === 'boolean') ? me.is_adult : null, updatedAt: Date.now() }, { merge: true });
+        return true;
+      });
+      if (available) { reserved = true; break; }
+      if (typeof createContactCode !== 'function') break;
+      code = codeNorm(createContactCode());
+    }
+    if (!reserved) throw new Error('Não foi possível reservar um código de contato exclusivo.');
+    if (codeNorm(me.code) !== code) { me.code = code; try { if (typeof saveProfile === 'function') saveProfile(); } catch (_) {} }
+    await fs.collection('users').doc(currentUid).set({ uid: currentUid, email: String(me.email), displayName: String(me.name || 'Contato').slice(0, 40), code, accountType: me.accountType === 'COM_NUMERO' ? 'COM_NUMERO' : 'SEM_NUMERO', tgUserId: String(me.tgUserId || ''), tgUsername: String(me.tgUsername || ''), is_adult: (typeof me.is_adult === 'boolean') ? me.is_adult : null, updatedAt: Date.now() }, { merge: true });
+  }""",
+            """  async function workerRequestDuringInitialization(path, body) {
+    if (!MEDIA_API) throw new Error('Gateway de contatos indisponível. Publique o Worker RdChat FCM/Telegram.');
+    if (!auth || !auth.currentUser) throw new Error('Sessão Firebase indisponível para registrar a identidade.');
+    const idToken = await auth.currentUser.getIdToken(true);
+    const response = await fetch(MEDIA_API + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', Authorization: 'Bearer ' + idToken },
+      body: JSON.stringify(body || {})
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.ok === false) throw new Error(payload.error || ('Gateway de contatos respondeu HTTP ' + response.status));
+    return payload;
+  }
+
+  async function registerOwnIdentity() {
+    if (!currentUid || !me || !me.email) return;
+    let code = codeNorm(me.code);
+    if (!codePathSafe(code) && typeof createContactCode === 'function') code = codeNorm(createContactCode());
+    if (!codePathSafe(code)) throw new Error('Código de contato inválido.');
+    let registered = null, lastError = null;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      try {
+        registered = await workerRequestDuringInitialization('/v1/identity/register', {
+          code,
+          email: String(me.email),
+          name: String(me.name || 'Contato').slice(0, 40),
+          accountType: me.accountType === 'COM_NUMERO' ? 'COM_NUMERO' : 'SEM_NUMERO',
+          tgUserId: String(me.tgUserId || ''),
+          tgUsername: String(me.tgUsername || ''),
+          is_adult: typeof me.is_adult === 'boolean' ? me.is_adult : null
+        });
+        break;
+      } catch (error) {
+        lastError = error;
+        if (!/já pertence a outra conta|already belongs|HTTP 409/i.test(String(error && error.message || error)) ||
+            typeof createContactCode !== 'function') throw error;
+        code = codeNorm(createContactCode());
+        if (!codePathSafe(code)) throw new Error('Não foi possível gerar um novo código de contato.');
+      }
+    }
+    if (!registered || !registered.code) throw lastError || new Error('O Worker não confirmou o registro da identidade.');
+    code = codeNorm(registered.code);
+    if (codeNorm(me.code) !== code) {
+      me.code = code;
+      try { if (typeof saveProfile === 'function') saveProfile(); } catch (_) {}
+    }
+  }
+
+  async function addContactByCode(codeValue) {
+    if (!initialized) await initializeFirebase();
+    const code = codeNorm(codeValue);
+    if (!codePathSafe(code)) throw new Error('Digite os seis dígitos do código.');
+    return mediaGatewayRequest('/v1/contacts/add', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ code })
+    });
+  }
+
+  async function lookupContactByCode(codeValue) {
+    if (!initialized) await initializeFirebase();
+    const code = codeNorm(codeValue);
+    if (!codePathSafe(code)) throw new Error('Digite os seis dígitos do código.');
+    const result = await mediaGatewayRequest('/v1/contacts/lookup', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ code })
+    });
+    return result && result.profile ? result.profile : null;
+  }
+
+  async function syncContactsFromWorker() {
+    if (!initialized) await initializeFirebase();
+    const response = await mediaGatewayRequest('/v1/contacts', { method: 'GET' });
+    const result = await response.json();
+    return Array.isArray(result && result.contacts) ? result.contacts : [];
+  }""",
+            "registro de identidade e contatos pelo Worker autenticado"
+        )
+
+        replaceExactlyOnce(
+            """    publishProfilePhoto,
+    get relayConfigured() { return !!MEDIA_API; },""",
+            """    publishProfilePhoto,
+    addContactByCode,
+    lookupContactByCode,
+    syncContactsFromWorker,
+    get relayConfigured() { return !!MEDIA_API; },""",
+            "exposição de API de contatos do Worker"
+        )
         htmlFile.writeText(html, Charsets.UTF_8)
     }
 }
