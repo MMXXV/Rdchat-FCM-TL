@@ -116,7 +116,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         if (shouldSuppressNotification(senderId, senderEmail)) {
             Log.i("RDCHAT_FCM", "NOTIFICATION_SUPPRESSED same_sender_chat_open senderId=$senderId")
         } else {
-            showDataNotification(title, body, type, data, senderId)
+            showDataNotification(title, body, type, data, senderId, senderEmail)
         }
     }
 
@@ -179,7 +179,8 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         body: String,
         type: String,
         data: Map<String, String>,
-        senderId: String
+        senderId: String,
+        senderEmail: String
     ) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
